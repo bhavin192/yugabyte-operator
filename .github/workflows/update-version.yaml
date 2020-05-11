@@ -3,9 +3,14 @@ on:
   repository_dispatch:
     types:
     - update-on-release
+  # TODO: Remove this push block
+  push:
+    branches:
+    - version-update
 jobs:
   update-version:
-    if: github.event.client_payload.prerelease == 'false'
+    # TODO: uncomment this
+    # if: github.event.client_payload.prerelease == 'false'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
@@ -16,7 +21,9 @@ jobs:
     - name: "Extract version number from tag"
       id: extract-version
       run: |
-        tag_name="${{ github.event.client_payload.tag }}"
+        # TODO: uncomment this
+        # tag_name="${{ github.event.client_payload.tag }}"
+        tag_name="v2.1.6"
         echo "Extracting version number from the tag '${tag_name}'."
         version_number="${tag_name/v/}"
         # Keep dots and count the string length
@@ -47,7 +54,8 @@ jobs:
         git add "pkg/controller/ybcluster/ybcluster_controller.go" \
           "deploy/crds/yugabyte_v1alpha1_ybcluster_full_cr.yaml"
         git commit -m "Update the version to ${{steps.extract-version.outputs.yb_version}}"
-        git push origin ${{ github.ref }}
+        # TODO: remove the bot-branch and -f
+        git push -f origin ${{ github.ref }}:bot-branch
     - name: "Show git status in case of failure"
       if: steps.update-version.outcome == 'failure'
       run: |
