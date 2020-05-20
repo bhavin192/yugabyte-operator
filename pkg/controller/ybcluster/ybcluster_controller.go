@@ -111,6 +111,27 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
+	err = c.Watch(&source.Kind{Type: &corev1.Pod{}}, &handler.EnqueueRequestsFromMapFunc{
+		ToRequests: handler.ToRequestsFunc(func(o handler.MapObject) []reconcile.Request {
+			labels := o.Meta.GetLabels()
+			clusterName, ok := labels[ybClusterNameLabel]
+			if !ok {
+				return nil
+			}
+			return []reconcile.Request{
+				{
+					NamespacedName: types.NamespacedName{
+						Namespace: o.Meta.GetNamespace(),
+						Name:      clusterName,
+					},
+				},
+			}
+		}),
+	})
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
