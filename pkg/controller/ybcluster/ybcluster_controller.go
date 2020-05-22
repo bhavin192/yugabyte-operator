@@ -69,6 +69,7 @@ const (
 	storageClassDefault         = "standard"
 	labelHostname               = "kubernetes.io/hostname"
 	appLabel                    = "app"
+	tserverFinalizer            = "yugabyte.com/blacklist-yb-tserver"
 )
 
 /**
@@ -831,4 +832,15 @@ func createListOfVolumeMountPaths(storageCount int32) string {
 	}
 
 	return strings.Join(paths, ",")
+}
+
+// TODO(bhavin192):
+// https://book.kubebuilder.io/reference/using-finalizers.html
+func containsString(slice []string, s string) bool {
+	for _, item := range slice {
+		if item == s {
+			return true
+		}
+	}
+	return false
 }

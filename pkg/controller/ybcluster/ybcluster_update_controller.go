@@ -76,6 +76,10 @@ func updateStatefulSet(newCluster *yugabytev1alpha1.YBCluster, sfs *appsv1.State
 		command = createTServerContainerCommand(newCluster.Namespace, masterRPCPort, tserverSpec.TserverRPCPort, tserverSpec.YSQLPort, masterSpec.Replicas, tserverSpec.Storage.Count, tserverSpec.Gflags, newCluster.Spec.TLS.Enabled)
 		containerPorts = createTServerContainerPortsList(tserverSpec.TserverUIPort, tserverSpec.TserverRPCPort, tserverSpec.YCQLPort, tserverSpec.YedisPort, tserverSpec.YSQLPort)
 		storageSpec = &tserverSpec.Storage
+		// TODO(bhavin192): simplify this
+		if !containsString(sfs.Spec.Template.GetFinalizers(), tserverFinalizer) {
+			sfs.Spec.Template.Finalizers = append(sfs.Spec.Template.Finalizers, createFinalizers(isTServerStatefulset)...)
+		}
 	}
 
 	sfs.Spec.Replicas = &replicas

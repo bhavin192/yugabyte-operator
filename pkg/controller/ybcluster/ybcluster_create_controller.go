@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	// TODO(bhavin192): should be ybclusters.yugabyte.com ?
+	// TODO(bhavin192): should be ybclusters.yugabyte.com or yugabyte.com/ybcluster-name
 	// ybClusterNamelabel is the label key for cluster name
 	ybClusterNameLabel = "ybcluster.yugabyte.com/name"
 )
@@ -220,8 +220,9 @@ func createStatefulSet(cluster *yugabytev1alpha1.YBCluster, isTServerStatefulset
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace: cluster.Namespace,
-					Labels:    podLabels,
+					Namespace:  cluster.Namespace,
+					Labels:     podLabels,
+					Finalizers: createFinalizers(isTServerStatefulset),
 				},
 				Spec: createPodSpec(cluster, isTServerStatefulset, name, serviceName),
 			},
@@ -255,6 +256,13 @@ func getVolumeClaimTemplates(storageSpec *yugabytev1alpha1.YBStorageSpec) *[]cor
 	}
 
 	return &volumeClaimTemplates
+}
+
+func createFinalizers(isTServerStatefulset bool) []string {
+	if !isTServerStatefulset {
+		return []string{}
+	}
+	return []string{tserverFinalizer}
 }
 
 func createPodSpec(cluster *yugabytev1alpha1.YBCluster, isTServerStatefulset bool, name, serviceName string) corev1.PodSpec {
