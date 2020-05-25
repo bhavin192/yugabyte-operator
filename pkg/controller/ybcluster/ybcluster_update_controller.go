@@ -77,6 +77,11 @@ func updateStatefulSet(newCluster *yugabytev1alpha1.YBCluster, sfs *appsv1.State
 		containerPorts = createTServerContainerPortsList(tserverSpec.TserverUIPort, tserverSpec.TserverRPCPort, tserverSpec.YCQLPort, tserverSpec.YedisPort, tserverSpec.YSQLPort)
 		storageSpec = &tserverSpec.Storage
 		// TODO(bhavin192): simplify this
+		// TODO(bhavin192): should this be here at all? It's
+		// possible that event of removing finalizer (by
+		// deletion watcher), will trigger an update? ANS:
+		// Nope, it's not possible to add new Finalizer when
+		// the resource is marked for deletion
 		if !containsString(sfs.Spec.Template.GetFinalizers(), tserverFinalizer) {
 			sfs.Spec.Template.Finalizers = append(sfs.Spec.Template.Finalizers, createFinalizers(isTServerStatefulset)...)
 		}

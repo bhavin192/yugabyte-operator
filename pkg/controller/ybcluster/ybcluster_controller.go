@@ -70,6 +70,7 @@ const (
 	labelHostname               = "kubernetes.io/hostname"
 	appLabel                    = "app"
 	tserverFinalizer            = "yugabyte.com/blacklist-yb-tserver"
+	blacklistAnnotation         = "yugabyte.com/blacklist"
 )
 
 /**
@@ -518,6 +519,13 @@ func (r *ReconcileYBCluster) reconcileStatefulsets(cluster *yugabytev1alpha1.YBC
 	} else if err != nil {
 		return err
 	} else {
+		// TODO(bhavin192): should this be placed somewhere
+		// else?
+		// TODO(bhavin192): should this be called after
+		// updateTserverstatefulset?
+		if err := r.blacklistPods(found); err != nil {
+			return err
+		}
 		logger.Info("updating tserver statefulset")
 		updateTServerStatefulset(cluster, found)
 		if err := r.client.Update(context.TODO(), found); err != nil {
@@ -526,6 +534,44 @@ func (r *ReconcileYBCluster) reconcileStatefulsets(cluster *yugabytev1alpha1.YBC
 		}
 	}
 
+	return nil
+}
+
+// TODO(bhavin192): take namespacedname of STS instead of whole object
+// blacklistPods adds yugabyte.com/blacklist: true annotation to the
+// pods selected by given sts
+func (r *ReconcileYBCluster) blacklistPods(sts *appsv1.StatefulSet) error {
+	pods := &corev1.PodList{}
+	err := r.client.List(context.TODO(),
+		client.MatchingLabels(sts.Spec.Template.GetLabels()).InNamespace(sts.GetNamespace()),
+		pods)
+	if err != nil {
+		// TODO(bhavin192): failed to blacklist Pods?
+		return err
+	}
+	// (&client.ListOptions{}).
+	// 	MatchingLabels(sts.Spec.Template.
+	// 		GetLabels()).InNamespace(sts.GetNamespace())
+	for _, pod := range pods.Items {
+		if !pod.ObjectMeta.DeletionTimestamp.IsZero() {
+			// TODO(bhavin192): can use && here
+			if containsString(pod.Finalizers, tserverFinalizer) {
+				// ant := pod.GetAnnotations()
+				// logger.Infof("%T", ant)
+				if pod.Annotations == nil {
+					pod.SetAnnotations(map[string]string{blacklistAnnotation: "true"})
+				} else if _, ok := pod.Annotations[blacklistAnnotation]; !ok {
+					pod.Annotations[blacklistAnnotation] = "true"
+				}
+				// TODO(bhavin192): should update the whole PodList at once?
+				if err = r.client.Update(context.TODO(), &pod); err != nil {
+					// TODO(bhavin192): failed to add
+					// blacklist annotation to Pods?
+					return err
+				}
+			}
+		}
+	}
 	return nil
 }
 
