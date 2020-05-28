@@ -7,12 +7,14 @@ import (
 
 	"github.com/coreos/pkg/capnslog"
 	yugabytev1alpha1 "github.com/yugabyte/yugabyte-k8s-operator/pkg/apis/yugabyte/v1alpha1"
+	"github.com/yugabyte/yugabyte-k8s-operator/pkg/kube"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -71,6 +73,7 @@ const (
 	appLabel                    = "app"
 	tserverFinalizer            = "yugabyte.com/blacklist-yb-tserver"
 	blacklistAnnotation         = "yugabyte.com/blacklist"
+	ybAdminCommand              = "/home/yugabyte/bin/yb-admin"
 )
 
 /**
@@ -86,7 +89,11 @@ func Add(mgr manager.Manager) error {
 
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager) reconcile.Reconciler {
-	return &ReconcileYBCluster{client: mgr.GetClient(), scheme: mgr.GetScheme()}
+	return &ReconcileYBCluster{
+		client: mgr.GetClient(),
+		scheme: mgr.GetScheme(),
+		config: mgr.GetConfig(),
+	}
 }
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
@@ -146,6 +153,7 @@ type ReconcileYBCluster struct {
 	// that reads objects from the cache and writes to the apiserver
 	client client.Client
 	scheme *runtime.Scheme
+	config *rest.Config
 }
 
 // Reconcile reads that state of the cluster for a YBCluster object and makes changes based on the state read
@@ -526,6 +534,13 @@ func (r *ReconcileYBCluster) reconcileStatefulsets(cluster *yugabytev1alpha1.YBC
 		if err := r.blacklistPods(found); err != nil {
 			return err
 		}
+
+		// TODO(bhavin192): should we combine this with above
+		// function
+		if err := r.syncBlacklist(cluster, found); err != nil {
+			return err
+		}
+
 		logger.Info("updating tserver statefulset")
 		updateTServerStatefulset(cluster, found)
 		if err := r.client.Update(context.TODO(), found); err != nil {
@@ -552,6 +567,7 @@ func (r *ReconcileYBCluster) blacklistPods(sts *appsv1.StatefulSet) error {
 	// (&client.ListOptions{}).
 	// 	MatchingLabels(sts.Spec.Template.
 	// 		GetLabels()).InNamespace(sts.GetNamespace())
+	// https://git.io/Jfw0p
 	for _, pod := range pods.Items {
 		if !pod.ObjectMeta.DeletionTimestamp.IsZero() {
 			// TODO(bhavin192): can use && here
@@ -571,6 +587,154 @@ func (r *ReconcileYBCluster) blacklistPods(sts *appsv1.StatefulSet) error {
 				}
 			}
 		}
+	}
+	return nil
+}
+
+// syncblacklist makes sure that the pods with blacklist annotation
+// are added to the blacklist in YB-Master configuration. If the
+// annotation is missing, then the pod is removed from YB-Master's
+// blacklist.
+
+// TODO(bhavin192): should we just combine the blacklistPods and this
+// function
+
+// TODO(bhavin192): we can just pass cluster as an argument to this
+// function; then find pods which has app: yb-tserver and cluster-name
+// on them. This way we will be free from requirement of fetching the
+// sts object.
+func (r *ReconcileYBCluster) syncBlacklist(cluster *yugabytev1alpha1.YBCluster, sts *appsv1.StatefulSet) error {
+	pods := &corev1.PodList{}
+	err := r.client.List(context.TODO(),
+		client.MatchingLabels(sts.Spec.Template.GetLabels()).InNamespace(sts.GetNamespace()),
+		pods)
+	// https://git.io/Jfw0p
+	if err != nil {
+		// TODO(bhavin192): failed to blacklist Pods?
+		return err
+	}
+
+	// TODO(bhavin192): move this as a function from separate package
+	runWithShell := func(shell string, cmd []string) []string {
+		return []string{shell, "-c", strings.Join(cmd, " ")}
+	}
+
+	// TODO(bhavin192): remove/move this once we have proper way
+	// to parse the configuration
+	blacklistFromConfig := func(cfg string) []string {
+		cfgLines := strings.Split(cfg, "\n")
+		hostPrefix := "    host: "
+		hosts := make([]string, 0)
+		for _, l := range cfgLines {
+			if strings.HasPrefix(l, hostPrefix) {
+				host := strings.Split(l, "\"")[1]
+				hosts = append(hosts, host)
+			}
+		}
+		return hosts
+	}
+
+	// Fetch current blacklist from YB-Master
+	getConfigCmd := runWithShell("bash",
+		[]string{
+			ybAdminCommand,
+			"--master_addresses",
+			getMasterAddresses(
+				cluster.Namespace,
+				cluster.Spec.Master.MasterRPCPort,
+				cluster.Spec.Master.Replicas,
+			),
+			"get_universe_config",
+		})
+
+	cout, cerr, err := kube.Exec(r.config, cluster.Namespace, fmt.Sprintf("%s-%d", masterName, 0), "", getConfigCmd, nil)
+	if err != nil {
+		return err
+	}
+	// TODO(bhavin192): remove this
+	logger.Infof("got the config, cout: %s, cerr: %s", cout, cerr)
+
+	currentBl := blacklistFromConfig(cout)
+
+	// TODO(bhavin192): remove this
+	logger.Infof("current blacklist: %#v", currentBl)
+
+	for _, pod := range pods.Items {
+		podFQDN := fmt.Sprintf(
+			"%s.%s.%s.svc.cluster.local",
+			pod.ObjectMeta.Name,
+			tserverNamePlural,
+			cluster.Namespace,
+		)
+
+		operation := "ADD"
+
+		if pod.Annotations == nil {
+			operation = "REMOVE"
+		}
+		if _, ok := pod.Annotations[blacklistAnnotation]; !ok {
+			operation = "REMOVE"
+		}
+		if pod.Annotations[blacklistAnnotation] == "false" {
+			operation = "REMOVE"
+		}
+
+		if containsString(currentBl, podFQDN) {
+			if operation == "ADD" {
+				// TODO(bhavin192): make this detailed
+				logger.Infof("pod %s is already in YB-Master blacklist, skipping.", podFQDN)
+				continue
+			}
+		} else {
+			if operation == "REMOVE" {
+				// TODO(bhavin192): make this detailed
+				logger.Infof("pod %s is not in YB-Master blacklist, skipping.", podFQDN)
+				continue
+			}
+		}
+
+		modBlacklistCmd := runWithShell("bash",
+			[]string{
+				ybAdminCommand,
+				"--master_addresses",
+				getMasterAddresses(
+					cluster.Namespace,
+					cluster.Spec.Master.MasterRPCPort,
+					cluster.Spec.Master.Replicas,
+				),
+				"change_blacklist",
+				operation,
+				fmt.Sprintf(
+					"%s:%d",
+					podFQDN,
+					cluster.Spec.Tserver.TserverRPCPort,
+				),
+			})
+
+		// TODO(bhavin192): remove this
+		logger.Infof("blacklist command: %#v", modBlacklistCmd)
+
+		// blacklist it or remove it
+		sout, serr, err := kube.Exec(r.config, cluster.Namespace, fmt.Sprintf("%s-%d", masterName, 0), "", modBlacklistCmd, nil)
+		if err != nil {
+			return err
+		}
+
+		logger.Infof("%s %s to/from blacklist out: %s, err: %s", pod.ObjectMeta.Name, operation, sout, serr)
+		// TODO(bhavin192): if there is no error, should we
+		// just assume that the pod has been added to the
+		// blacklist and don't query the blacklist to verify
+		// that?
+
+		// TODO(bhavin192): should update the whole PodList at once?
+		// if err = r.client.Update(context.TODO(), &pod); err != nil {
+		// 	// TODO(bhavin192): failed to add
+		// 	// blacklist annotation to Pods?
+		// 	return err
+		// }
+
+		// TODO(bhavin192): mark the pod as synced?
+
 	}
 	return nil
 }
