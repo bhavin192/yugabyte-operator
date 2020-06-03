@@ -110,6 +110,12 @@ type YBClusterStatus struct {
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
 	MasterReplicas  int64 `json:"masterReplicas"`
 	TserverReplicas int64 `json:"tserverReplicas"`
+	// TODO(bhavin192): remove this once we use Conditions
+	// TODO(bhavin192): should this have omitempty
+	DataMoveCond          string      `json:"dataMoveCond"`
+	DataMoveChangeTime    metav1.Time `json:"dataMoveChangeTime"`
+	TServerScaleDownCond  string      `json:"tServerScaleDownCond"`
+	TSScaleDownChangeTime metav1.Time `json:"tSScaleDownChangeTime"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

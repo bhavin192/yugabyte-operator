@@ -11,16 +11,16 @@ import (
 
 func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenAPIDefinition {
 	return map[string]common.OpenAPIDefinition{
-		"github.com/yugabyte/yugabyte-k8s-operator/pkg/apis/yugabyte/v1alpha1.YBCluster":       schema_pkg_apis_yugabyte_v1alpha1_YBCluster(ref),
-		"github.com/yugabyte/yugabyte-k8s-operator/pkg/apis/yugabyte/v1alpha1.YBClusterSpec":   schema_pkg_apis_yugabyte_v1alpha1_YBClusterSpec(ref),
-		"github.com/yugabyte/yugabyte-k8s-operator/pkg/apis/yugabyte/v1alpha1.YBClusterStatus": schema_pkg_apis_yugabyte_v1alpha1_YBClusterStatus(ref),
-		"github.com/yugabyte/yugabyte-k8s-operator/pkg/apis/yugabyte/v1alpha1.YBGFlagSpec":     schema_pkg_apis_yugabyte_v1alpha1_YBGFlagSpec(ref),
-		"github.com/yugabyte/yugabyte-k8s-operator/pkg/apis/yugabyte/v1alpha1.YBImageSpec":     schema_pkg_apis_yugabyte_v1alpha1_YBImageSpec(ref),
-		"github.com/yugabyte/yugabyte-k8s-operator/pkg/apis/yugabyte/v1alpha1.YBMasterSpec":    schema_pkg_apis_yugabyte_v1alpha1_YBMasterSpec(ref),
-		"github.com/yugabyte/yugabyte-k8s-operator/pkg/apis/yugabyte/v1alpha1.YBRootCASpec":    schema_pkg_apis_yugabyte_v1alpha1_YBRootCASpec(ref),
-		"github.com/yugabyte/yugabyte-k8s-operator/pkg/apis/yugabyte/v1alpha1.YBStorageSpec":   schema_pkg_apis_yugabyte_v1alpha1_YBStorageSpec(ref),
-		"github.com/yugabyte/yugabyte-k8s-operator/pkg/apis/yugabyte/v1alpha1.YBTLSSpec":       schema_pkg_apis_yugabyte_v1alpha1_YBTLSSpec(ref),
-		"github.com/yugabyte/yugabyte-k8s-operator/pkg/apis/yugabyte/v1alpha1.YBTServerSpec":   schema_pkg_apis_yugabyte_v1alpha1_YBTServerSpec(ref),
+		"./pkg/apis/yugabyte/v1alpha1.YBCluster":       schema_pkg_apis_yugabyte_v1alpha1_YBCluster(ref),
+		"./pkg/apis/yugabyte/v1alpha1.YBClusterSpec":   schema_pkg_apis_yugabyte_v1alpha1_YBClusterSpec(ref),
+		"./pkg/apis/yugabyte/v1alpha1.YBClusterStatus": schema_pkg_apis_yugabyte_v1alpha1_YBClusterStatus(ref),
+		"./pkg/apis/yugabyte/v1alpha1.YBGFlagSpec":     schema_pkg_apis_yugabyte_v1alpha1_YBGFlagSpec(ref),
+		"./pkg/apis/yugabyte/v1alpha1.YBImageSpec":     schema_pkg_apis_yugabyte_v1alpha1_YBImageSpec(ref),
+		"./pkg/apis/yugabyte/v1alpha1.YBMasterSpec":    schema_pkg_apis_yugabyte_v1alpha1_YBMasterSpec(ref),
+		"./pkg/apis/yugabyte/v1alpha1.YBRootCASpec":    schema_pkg_apis_yugabyte_v1alpha1_YBRootCASpec(ref),
+		"./pkg/apis/yugabyte/v1alpha1.YBStorageSpec":   schema_pkg_apis_yugabyte_v1alpha1_YBStorageSpec(ref),
+		"./pkg/apis/yugabyte/v1alpha1.YBTLSSpec":       schema_pkg_apis_yugabyte_v1alpha1_YBTLSSpec(ref),
+		"./pkg/apis/yugabyte/v1alpha1.YBTServerSpec":   schema_pkg_apis_yugabyte_v1alpha1_YBTServerSpec(ref),
 	}
 }
 
@@ -51,19 +51,19 @@ func schema_pkg_apis_yugabyte_v1alpha1_YBCluster(ref common.ReferenceCallback) c
 					},
 					"spec": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("github.com/yugabyte/yugabyte-k8s-operator/pkg/apis/yugabyte/v1alpha1.YBClusterSpec"),
+							Ref: ref("./pkg/apis/yugabyte/v1alpha1.YBClusterSpec"),
 						},
 					},
 					"status": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("github.com/yugabyte/yugabyte-k8s-operator/pkg/apis/yugabyte/v1alpha1.YBClusterStatus"),
+							Ref: ref("./pkg/apis/yugabyte/v1alpha1.YBClusterStatus"),
 						},
 					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"github.com/yugabyte/yugabyte-k8s-operator/pkg/apis/yugabyte/v1alpha1.YBClusterSpec", "github.com/yugabyte/yugabyte-k8s-operator/pkg/apis/yugabyte/v1alpha1.YBClusterStatus", "k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta"},
+			"./pkg/apis/yugabyte/v1alpha1.YBClusterSpec", "./pkg/apis/yugabyte/v1alpha1.YBClusterStatus", "k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta"},
 	}
 }
 
@@ -82,29 +82,29 @@ func schema_pkg_apis_yugabyte_v1alpha1_YBClusterSpec(ref common.ReferenceCallbac
 					},
 					"image": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("github.com/yugabyte/yugabyte-k8s-operator/pkg/apis/yugabyte/v1alpha1.YBImageSpec"),
+							Ref: ref("./pkg/apis/yugabyte/v1alpha1.YBImageSpec"),
 						},
 					},
 					"tls": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("github.com/yugabyte/yugabyte-k8s-operator/pkg/apis/yugabyte/v1alpha1.YBTLSSpec"),
+							Ref: ref("./pkg/apis/yugabyte/v1alpha1.YBTLSSpec"),
 						},
 					},
 					"master": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("github.com/yugabyte/yugabyte-k8s-operator/pkg/apis/yugabyte/v1alpha1.YBMasterSpec"),
+							Ref: ref("./pkg/apis/yugabyte/v1alpha1.YBMasterSpec"),
 						},
 					},
 					"tserver": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("github.com/yugabyte/yugabyte-k8s-operator/pkg/apis/yugabyte/v1alpha1.YBTServerSpec"),
+							Ref: ref("./pkg/apis/yugabyte/v1alpha1.YBTServerSpec"),
 						},
 					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"github.com/yugabyte/yugabyte-k8s-operator/pkg/apis/yugabyte/v1alpha1.YBImageSpec", "github.com/yugabyte/yugabyte-k8s-operator/pkg/apis/yugabyte/v1alpha1.YBMasterSpec", "github.com/yugabyte/yugabyte-k8s-operator/pkg/apis/yugabyte/v1alpha1.YBTLSSpec", "github.com/yugabyte/yugabyte-k8s-operator/pkg/apis/yugabyte/v1alpha1.YBTServerSpec"},
+			"./pkg/apis/yugabyte/v1alpha1.YBImageSpec", "./pkg/apis/yugabyte/v1alpha1.YBMasterSpec", "./pkg/apis/yugabyte/v1alpha1.YBTLSSpec", "./pkg/apis/yugabyte/v1alpha1.YBTServerSpec"},
 	}
 }
 
@@ -127,11 +127,34 @@ func schema_pkg_apis_yugabyte_v1alpha1_YBClusterStatus(ref common.ReferenceCallb
 							Format: "int64",
 						},
 					},
+					"dataMoveCond": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+					"dataMoveChangeTime": {
+						SchemaProps: spec.SchemaProps{
+							Ref: ref("k8s.io/apimachinery/pkg/apis/meta/v1.Time"),
+						},
+					},
+					"tServerScaleDownCond": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+					"tSScaleDownChangeTime": {
+						SchemaProps: spec.SchemaProps{
+							Ref: ref("k8s.io/apimachinery/pkg/apis/meta/v1.Time"),
+						},
+					},
 				},
-				Required: []string{"masterReplicas", "tserverReplicas"},
+				Required: []string{"masterReplicas", "tserverReplicas", "dataMoveCond", "dataMoveChangeTime", "tServerScaleDownCond", "tSScaleDownChangeTime"},
 			},
 		},
-		Dependencies: []string{},
+		Dependencies: []string{
+			"k8s.io/apimachinery/pkg/apis/meta/v1.Time"},
 	}
 }
 
@@ -229,7 +252,7 @@ func schema_pkg_apis_yugabyte_v1alpha1_YBMasterSpec(ref common.ReferenceCallback
 					},
 					"storage": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("github.com/yugabyte/yugabyte-k8s-operator/pkg/apis/yugabyte/v1alpha1.YBStorageSpec"),
+							Ref: ref("./pkg/apis/yugabyte/v1alpha1.YBStorageSpec"),
 						},
 					},
 					"resources": {
@@ -243,7 +266,7 @@ func schema_pkg_apis_yugabyte_v1alpha1_YBMasterSpec(ref common.ReferenceCallback
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
-										Ref: ref("github.com/yugabyte/yugabyte-k8s-operator/pkg/apis/yugabyte/v1alpha1.YBGFlagSpec"),
+										Ref: ref("./pkg/apis/yugabyte/v1alpha1.YBGFlagSpec"),
 									},
 								},
 							},
@@ -253,7 +276,7 @@ func schema_pkg_apis_yugabyte_v1alpha1_YBMasterSpec(ref common.ReferenceCallback
 			},
 		},
 		Dependencies: []string{
-			"github.com/yugabyte/yugabyte-k8s-operator/pkg/apis/yugabyte/v1alpha1.YBGFlagSpec", "github.com/yugabyte/yugabyte-k8s-operator/pkg/apis/yugabyte/v1alpha1.YBStorageSpec", "k8s.io/api/core/v1.ResourceRequirements"},
+			"./pkg/apis/yugabyte/v1alpha1.YBGFlagSpec", "./pkg/apis/yugabyte/v1alpha1.YBStorageSpec", "k8s.io/api/core/v1.ResourceRequirements"},
 	}
 }
 
@@ -327,14 +350,14 @@ func schema_pkg_apis_yugabyte_v1alpha1_YBTLSSpec(ref common.ReferenceCallback) c
 					},
 					"rootCA": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("github.com/yugabyte/yugabyte-k8s-operator/pkg/apis/yugabyte/v1alpha1.YBRootCASpec"),
+							Ref: ref("./pkg/apis/yugabyte/v1alpha1.YBRootCASpec"),
 						},
 					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"github.com/yugabyte/yugabyte-k8s-operator/pkg/apis/yugabyte/v1alpha1.YBRootCASpec"},
+			"./pkg/apis/yugabyte/v1alpha1.YBRootCASpec"},
 	}
 }
 
@@ -394,7 +417,7 @@ func schema_pkg_apis_yugabyte_v1alpha1_YBTServerSpec(ref common.ReferenceCallbac
 					},
 					"storage": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("github.com/yugabyte/yugabyte-k8s-operator/pkg/apis/yugabyte/v1alpha1.YBStorageSpec"),
+							Ref: ref("./pkg/apis/yugabyte/v1alpha1.YBStorageSpec"),
 						},
 					},
 					"resources": {
@@ -408,7 +431,7 @@ func schema_pkg_apis_yugabyte_v1alpha1_YBTServerSpec(ref common.ReferenceCallbac
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
-										Ref: ref("github.com/yugabyte/yugabyte-k8s-operator/pkg/apis/yugabyte/v1alpha1.YBGFlagSpec"),
+										Ref: ref("./pkg/apis/yugabyte/v1alpha1.YBGFlagSpec"),
 									},
 								},
 							},
@@ -418,6 +441,6 @@ func schema_pkg_apis_yugabyte_v1alpha1_YBTServerSpec(ref common.ReferenceCallbac
 			},
 		},
 		Dependencies: []string{
-			"github.com/yugabyte/yugabyte-k8s-operator/pkg/apis/yugabyte/v1alpha1.YBGFlagSpec", "github.com/yugabyte/yugabyte-k8s-operator/pkg/apis/yugabyte/v1alpha1.YBStorageSpec", "k8s.io/api/core/v1.ResourceRequirements"},
+			"./pkg/apis/yugabyte/v1alpha1.YBGFlagSpec", "./pkg/apis/yugabyte/v1alpha1.YBStorageSpec", "k8s.io/api/core/v1.ResourceRequirements"},
 	}
 }

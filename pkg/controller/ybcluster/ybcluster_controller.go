@@ -11,6 +11,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -541,6 +542,12 @@ func (r *ReconcileYBCluster) reconcileStatefulsets(cluster *yugabytev1alpha1.YBC
 			return err
 		}
 
+		// TODO(bhavin192): place this somewhere else and make
+		// sure it's able to return reconcile.Result as well
+		if err := r.checkDataMoveProgress(cluster); err != nil {
+			return nil
+		}
+
 		logger.Info("updating tserver statefulset")
 		updateTServerStatefulset(cluster, found)
 		if err := r.client.Update(context.TODO(), found); err != nil {
@@ -612,11 +619,6 @@ func (r *ReconcileYBCluster) syncBlacklist(cluster *yugabytev1alpha1.YBCluster, 
 	if err != nil {
 		// TODO(bhavin192): failed to blacklist Pods?
 		return err
-	}
-
-	// TODO(bhavin192): move this as a function from separate package
-	runWithShell := func(shell string, cmd []string) []string {
-		return []string{shell, "-c", strings.Join(cmd, " ")}
 	}
 
 	// TODO(bhavin192): remove/move this once we have proper way
@@ -735,6 +737,53 @@ func (r *ReconcileYBCluster) syncBlacklist(cluster *yugabytev1alpha1.YBCluster, 
 
 		// TODO(bhavin192): mark the pod as synced?
 
+	}
+	return nil
+}
+
+func (r *ReconcileYBCluster) checkDataMoveProgress(cluster *yugabytev1alpha1.YBCluster) error {
+	cmd := runWithShell("bash",
+		[]string{
+			ybAdminCommand,
+			"--master_addresses",
+			getMasterAddresses(
+				cluster.Namespace,
+				cluster.Spec.Master.MasterRPCPort,
+				cluster.Spec.Master.Replicas,
+			),
+			"get_load_move_completion",
+		},
+	)
+	cout, cerr, err := kube.Exec(r.config, cluster.Namespace, fmt.Sprintf("%s-%d", masterName, 0), "", cmd, nil)
+	if err != nil {
+		return err
+	}
+
+	// TODO(bhavin192): remove this
+	logger.Infof("progress command: %#v", cmd)
+	logger.Infof("get_load_move_completion: out: %s, err: %s", cout, cerr)
+	p := cout[strings.Index(cout, "= ")+2 : strings.Index(cout, " :")]
+	logger.Info("Current progress:", p)
+	// TODO(bhavin192): replace this once we switch to
+	// Status.Conditions
+	// Toggle the progress
+	if p != "100" {
+		if cluster.Status.DataMoveCond == "False" || cluster.Status.DataMoveCond == "" {
+			cluster.Status.DataMoveCond = "True"
+			cluster.Status.DataMoveChangeTime = metav1.Now()
+		}
+	} else {
+		if cluster.Status.DataMoveCond == "True" || cluster.Status.DataMoveCond == "" {
+			cluster.Status.DataMoveCond = "False"
+			cluster.Status.DataMoveChangeTime = metav1.Now()
+		}
+	}
+
+	// TODO(bhavin192): we should have way to reconcile with
+	// increasing time if the data move is in progress. Check
+	// after 1m, 5m, 10m ,15m, …
+	if err := r.client.Status().Update(context.TODO(), cluster); err != nil {
+		return err
 	}
 	return nil
 }
@@ -1053,4 +1102,11 @@ func containsString(slice []string, s string) bool {
 		}
 	}
 	return false
+}
+
+// TODO(bhavin192): move this as a function from separate package
+// runWithShell wraps the given cmd slice in a new slice representing
+// a command like 'shell -c "cmd arg1 arg2"'
+func runWithShell(shell string, cmd []string) []string {
+	return []string{shell, "-c", strings.Join(cmd, " ")}
 }

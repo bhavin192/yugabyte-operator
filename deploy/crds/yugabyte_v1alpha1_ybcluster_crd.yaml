@@ -7,138 +7,139 @@ spec:
   names:
     kind: YBCluster
     listKind: YBClusterList
-    singular: ybcluster
     plural: ybclusters
+    singular: ybcluster
   scope: Namespaced
-  version: v1alpha1
   subresources:
     status: {}
   validation:
     openAPIV3Schema:
-      type: object
-      description: Custom resource object for YugabyteDB Cluster operator.
       properties:
-        spec:
+        apiVersion:
+          description: 'APIVersion defines the versioned schema of this representation
+            of an object. Servers should convert recognized schemas to the latest
+            internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#resources'
+          type: string
+        kind:
+          description: 'Kind is a string value representing the REST resource this
+            object represents. Servers may infer this from the endpoint the client
+            submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#types-kinds'
+          type: string
+        metadata:
           type: object
+        spec:
           properties:
             image:
-              type: object
               properties:
+                pullPolicy:
+                  type: string
                 repository:
                   type: string
                 tag:
                   type: string
-                pullPolicy:
-                  type: string
-                  enum: ["Always", "Never", "IfNotPresent"]
-              required: ["repository", "tag", "pullPolicy"]
-            tls:
               type: object
-              description: Enable TLS encryption for YugabyteDB (if desired). Specify tls.cert & tls.key, if it is enabled, omit them otherwise.
-              properties:
-                enabled:
-                  type: boolean
-                rootCA:
-                  type: object
-                  properties:
-                    cert:
-                      type: string
-                    key:
-                      type: string
-              required: ["enabled"]
-            replicationFactor:
-              type: integer
-              description: Data replication factor for the cluster
-              minimum: 1
             master:
-              type: object
-              description: All properties pertaining to YB-Master go here.
               properties:
-                replicas:
-                  type: integer
-                  description: Count of YB-Masters to run
-                  format: int32
-                  minimum: 1
-                masterUIPort:
-                  type: integer
-                  format: int32
-                  minimum: 1
-                masterRPCPort:
-                  type: integer
-                  format: int32
-                  minimum: 1
                 enableLoadBalancer:
                   type: boolean
-                  description: If set to true, YB-Master UI will be accessible over the internet.
-                podManagementPolicy:
-                  type: string
-                  description: Dictates if YB-Master pods will come up one-after-the-other or simultaneously.
-                  enum: ["OrderedReady", "Parallel"]
-                storage:
-                  type: object
-                  properties:
-                    count:
-                      type: integer
-                      format: int32
-                      minimum: 1
-                    size:
-                      type: string
-                      pattern: ^[0-9]{1,4}[MGT][IBib]$
-                    storageClass:
-                      type: string
-                  required: ["size"]
-                resources:
-                  type: object
-                  description: Specify resource requests & limits for YB-Master pods.
-                  properties:
-                    requests:
-                      type: object
-                      properties:
-                        cpu:
-                          maximum: 64
-                        memory:
-                          type: string
-                          pattern: ^[0-9]{1,4}[MGT][IBib]$
-                      required: ["cpu", "memory"]
-                    limits:
-                      type: object
-                      properties:
-                        cpu:
-                          maximum: 64
-                        memory:
-                          type: string
-                          pattern: ^[0-9]{1,4}[MGT][IBib]$
-                      required: ["cpu", "memory"]
-                  anyOf:
-                    - required: ["requests"]
-                    - required: ["limits"]
                 gflags:
-                  type: array
-                  description: List of GFlags for additional control on YB-Master. Specify this attribute if you want to add one or more GFlags, omit otherwise.
                   items:
-                    type: object
                     properties:
                       key:
                         type: string
                       value:
                         type: string
-                    required: ["key", "value"]
+                    type: object
                   minItems: 1
-              required: ["replicas", "storage"]
-            tserver:
-              type: object
-              description: All properties pertaining to YB-TServer go here.
-              properties:
+                  type: array
+                masterRPCPort:
+                  format: int32
+                  minimum: 1
+                  type: integer
+                masterUIPort:
+                  format: int32
+                  minimum: 1
+                  type: integer
+                podManagementPolicy:
+                  type: string
                 replicas:
-                  type: integer
-                  description: Count of YB-TServers to run
-                  format: int32
-                  minimum: 1
-                tserverUIPort:
                   format: int32
                   minimum: 1
                   type: integer
+                resources:
+                  type: object
+                storage:
+                  properties:
+                    count:
+                      format: int32
+                      minimum: 1
+                      type: integer
+                    size:
+                      pattern: ^[0-9]{1,4}[MGT][IBib]$
+                      type: string
+                    storageClass:
+                      type: string
+                  type: object
+              type: object
+            replicationFactor:
+              description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
+                Important: Run "operator-sdk generate k8s" to regenerate code after
+                modifying this file Add custom validation using kubebuilder tags:
+                https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html'
+              format: int32
+              minimum: 1
+              type: integer
+            tls:
+              properties:
+                enabled:
+                  type: boolean
+                rootCA:
+                  properties:
+                    cert:
+                      type: string
+                    key:
+                      type: string
+                  type: object
+              type: object
+            tserver:
+              properties:
+                enableLoadBalancer:
+                  type: boolean
+                gflags:
+                  items:
+                    properties:
+                      key:
+                        type: string
+                      value:
+                        type: string
+                    type: object
+                  minItems: 1
+                  type: array
+                podManagementPolicy:
+                  type: string
+                replicas:
+                  format: int32
+                  minimum: 1
+                  type: integer
+                resources:
+                  type: object
+                storage:
+                  properties:
+                    count:
+                      format: int32
+                      minimum: 1
+                      type: integer
+                    size:
+                      pattern: ^[0-9]{1,4}[MGT][IBib]$
+                      type: string
+                    storageClass:
+                      type: string
+                  type: object
                 tserverRPCPort:
+                  format: int32
+                  minimum: 1
+                  type: integer
+                tserverUIPort:
                   format: int32
                   minimum: 1
                   type: integer
@@ -154,76 +155,39 @@ spec:
                   format: int32
                   minimum: 1
                   type: integer
-                enableLoadBalancer:
-                  type: boolean
-                  description: If set to true, YB-TServer UI will be accessible over the internet. This property will be ignored if tserver.tserverUIPort is not specified.
-                podManagementPolicy:
-                  type: string
-                  description: Dictates if YB-TServer pods will come up one-after-the-other or simultaneously.
-                  enum: ["OrderedReady", "Parallel"]
-                storage:
-                  type: object
-                  properties:
-                    count:
-                      type: integer
-                      format: int32
-                      minimum: 1
-                    size:
-                      type: string
-                      pattern: ^[0-9]{1,4}[MGT][IBib]$
-                    storageClass:
-                      type: string
-                  required: ["count", "size"]
-                resources:
-                  type: object
-                  description: Specify resource requests & limits for YB-TServer pods.
-                  properties:
-                    requests:
-                      type: object
-                      properties:
-                        cpu:
-                          maximum: 64
-                        memory:
-                          type: string
-                          pattern: ^[0-9]{1,4}[MGT][IBib]$
-                      required: ["cpu", "memory"]
-                    limits:
-                      type: object
-                      properties:
-                        cpu:
-                          maximum: 64
-                        memory:
-                          type: string
-                          pattern: ^[0-9]{1,4}[MGT][IBib]$
-                      required: ["cpu", "memory"]
-                  anyOf:
-                    - required: ["requests"]
-                    - required: ["limits"]
-                gflags:
-                  type: array
-                  description: List of GFlags for additional control on YB-TServer. Specify this attribute if you want to add one or more GFlags, omit otherwise.
-                  items:
-                    type: object
-                    properties:
-                      key:
-                        type: string
-                      value:
-                        type: string
-                    required: ["key", "value"]
-                  minItems: 1
-              required: ["replicas", "storage"]
-          required: ["replicationFactor", "master", "tserver"]
+              type: object
+          type: object
         status:
           properties:
+            dataMoveChangeTime:
+              format: date-time
+              type: string
+            dataMoveCond:
+              description: 'TODO(bhavin192): remove this once we use Conditions TODO(bhavin192):
+                should this have omitempty'
+              type: string
             masterReplicas:
+              description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
+                of cluster Important: Run "operator-sdk generate k8s" to regenerate
+                code after modifying this file Add custom validation using kubebuilder
+                tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html'
               format: int64
               type: integer
+            tSScaleDownChangeTime:
+              format: date-time
+              type: string
+            tServerScaleDownCond:
+              type: string
             tserverReplicas:
               format: int64
               type: integer
           required:
           - masterReplicas
           - tserverReplicas
+          - dataMoveCond
+          - dataMoveChangeTime
+          - tServerScaleDownCond
+          - tSScaleDownChangeTime
           type: object
   version: v1alpha1
   versions:
