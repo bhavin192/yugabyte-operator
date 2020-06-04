@@ -220,9 +220,8 @@ func createStatefulSet(cluster *yugabytev1alpha1.YBCluster, isTServerStatefulset
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace:  cluster.Namespace,
-					Labels:     podLabels,
-					Finalizers: createFinalizers(isTServerStatefulset),
+					Namespace: cluster.Namespace,
+					Labels:    podLabels,
 				},
 				Spec: createPodSpec(cluster, isTServerStatefulset, name, serviceName),
 			},
@@ -256,13 +255,6 @@ func getVolumeClaimTemplates(storageSpec *yugabytev1alpha1.YBStorageSpec) *[]cor
 	}
 
 	return &volumeClaimTemplates
-}
-
-func createFinalizers(isTServerStatefulset bool) []string {
-	if !isTServerStatefulset {
-		return []string{}
-	}
-	return []string{tserverFinalizer}
 }
 
 func createPodSpec(cluster *yugabytev1alpha1.YBCluster, isTServerStatefulset bool, name, serviceName string) corev1.PodSpec {
