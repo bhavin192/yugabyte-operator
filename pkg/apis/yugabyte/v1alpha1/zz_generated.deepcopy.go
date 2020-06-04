@@ -93,6 +93,7 @@ func (in *YBClusterSpec) DeepCopy() *YBClusterSpec {
 func (in *YBClusterStatus) DeepCopyInto(out *YBClusterStatus) {
 	*out = *in
 	in.DataMoveChangeTime.DeepCopyInto(&out.DataMoveChangeTime)
+	in.TSScaleDownChangeTime.DeepCopyInto(&out.TSScaleDownChangeTime)
 	return
 }
 

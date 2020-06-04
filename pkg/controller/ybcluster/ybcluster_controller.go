@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/coreos/pkg/capnslog"
 	yugabytev1alpha1 "github.com/yugabyte/yugabyte-k8s-operator/pkg/apis/yugabyte/v1alpha1"
@@ -200,6 +201,11 @@ func (r *ReconcileYBCluster) Reconcile(request reconcile.Request) (reconcile.Res
 	}
 
 	if err = r.reconcileStatefulsets(cluster); err != nil {
+		// TODO(bhavin192): use better way to return the
+		// reconcile.Request
+		if err.Error() == "RetryAfter10S" {
+			return reconcile.Result{RequeueAfter: time.Second * 10}, nil
+		}
 		// Error reconciling statefulsets - requeue the request.
 		return reconcile.Result{}, err
 	}
@@ -528,12 +534,54 @@ func (r *ReconcileYBCluster) reconcileStatefulsets(cluster *yugabytev1alpha1.YBC
 	} else if err != nil {
 		return err
 	} else {
-		// TODO(bhavin192): should this be placed somewhere
-		// else?
-		// TODO(bhavin192): should this be called after
-		// updateTserverstatefulset?
-		if err := r.blacklistPods(found); err != nil {
-			return err
+		// TODO(bhavin192): remove this hack once we switch to Conditions
+		if cluster.Status.DataMoveChangeTime.IsZero() {
+			cluster.Status.DataMoveChangeTime = metav1.Now()
+		}
+		if cluster.Status.TSScaleDownChangeTime.IsZero() {
+			cluster.Status.TSScaleDownChangeTime = metav1.Now()
+		}
+
+		// Don't requeue if TServer replica count is less than
+		// cluster replication factor
+		if cluster.Spec.Tserver.Replicas < cluster.Spec.ReplicationFactor {
+			logger.Errorf("TServer replica count cannot be less than the replication factor of the cluster: '%d' < '%d'.", cluster.Spec.Tserver.Replicas, cluster.Spec.ReplicationFactor)
+			return nil
+		}
+
+		// TODO(bhavin192): should be moved out as separate function
+		// Scale down logic
+		// TODO(bhavin192): if the scale down count/condition
+		// status field is set then don't recalculate below
+		// value
+		tserverScaleDown := *found.Spec.Replicas - cluster.Spec.Tserver.Replicas
+		// TODO(bhavin192): have better info
+		logger.Infof("scaling down TServer replicas by %d", tserverScaleDown)
+
+		if tserverScaleDown > 0 {
+			// TODO(bhavin192): add the TServer count in
+			// status as well
+			if cluster.Status.TServerScaleDownCond == "" || cluster.Status.TServerScaleDownCond == "False" {
+				cluster.Status.TServerScaleDownCond = "True"
+				cluster.Status.TSScaleDownChangeTime = metav1.Now()
+			}
+			// TODO(bhavin192): have better info
+			logger.Infof("updating status TServerScaleDownCond: %s, TSScaleDownChageTime: %s", cluster.Status.TServerScaleDownCond, cluster.Status.TSScaleDownChangeTime)
+			// TODO(bhavin192): should we update the CR at
+			// the end instead of updating it at different
+			// places.
+			if err := r.client.Status().Update(context.TODO(), cluster); err != nil {
+				return err
+			}
+
+			// TODO(bhavin192): should this be placed somewhere
+			// else?
+			// TODO(bhavin192): should this be called after
+			// updateTserverstatefulset?
+			if err := r.blacklistPods(cluster, tserverScaleDown); err != nil {
+				return err
+			}
+
 		}
 
 		// TODO(bhavin192): should we combine this with above
@@ -545,57 +593,120 @@ func (r *ReconcileYBCluster) reconcileStatefulsets(cluster *yugabytev1alpha1.YBC
 		// TODO(bhavin192): place this somewhere else and make
 		// sure it's able to return reconcile.Result as well
 		if err := r.checkDataMoveProgress(cluster); err != nil {
-			return nil
+			// TODO(bhavin192): remove this
+			logger.Infof("failed to update the Status: %v", err)
+			return err
 		}
 
-		logger.Info("updating tserver statefulset")
-		updateTServerStatefulset(cluster, found)
-		if err := r.client.Update(context.TODO(), found); err != nil {
-			logger.Errorf("failed to update tserver statefulset object. err: %+v", err)
-			return err
+		allowStsUpdate := true
+		if tserverScaleDown > 0 {
+			if cluster.Status.DataMoveCond == "True" || cluster.Status.TServerScaleDownCond == "True" {
+				allowStsUpdate = false
+			}
+			if cluster.Status.DataMoveCond == "False" { // && cluster.Status.TServerScaleDownCond == "False" {
+				// TODO(bhavin192): use heartbeat time
+				// once we switch to
+				// Status.Conditions. It will make
+				// sure that we handle case of 0
+				// tablets on a tserver. Should have
+				// gap of at least 5 minutes.
+				if cluster.Status.DataMoveChangeTime.After(cluster.Status.TSScaleDownChangeTime.Time) {
+					allowStsUpdate = true
+				}
+			}
+		}
+
+		if allowStsUpdate {
+			logger.Info("updating tserver statefulset")
+			// TODO(bhavin192): make sure we update to
+			// correct replica count i.e. the one saved in
+			// Status. Is it safe to override the values
+			// from cluster.Spec?
+			updateTServerStatefulset(cluster, found)
+			if err := r.client.Update(context.TODO(), found); err != nil {
+				logger.Errorf("failed to update tserver statefulset object. err: %+v", err)
+				return err
+			}
+			// TODO(bhavin192): we have to update the
+			// status after changing values
+			if cluster.Status.TServerScaleDownCond == "True" || cluster.Status.TServerScaleDownCond == "" {
+				cluster.Status.TServerScaleDownCond = "False"
+				cluster.Status.TSScaleDownChangeTime = metav1.Now()
+				if err := r.client.Status().Update(context.TODO(), cluster); err != nil {
+					return err
+				}
+			}
+		} else {
+			// TODO(bhavin192): there should be better to
+			// way to return reconcile.Result
+			return fmt.Errorf("RetryAfter10S")
 		}
 	}
 
 	return nil
 }
 
-// TODO(bhavin192): take namespacedname of STS instead of whole object
 // blacklistPods adds yugabyte.com/blacklist: true annotation to the
-// pods selected by given sts
-func (r *ReconcileYBCluster) blacklistPods(sts *appsv1.StatefulSet) error {
-	pods := &corev1.PodList{}
-	err := r.client.List(context.TODO(),
-		client.MatchingLabels(sts.Spec.Template.GetLabels()).InNamespace(sts.GetNamespace()),
-		pods)
-	if err != nil {
-		// TODO(bhavin192): failed to blacklist Pods?
-		return err
+// TServer pods
+func (r *ReconcileYBCluster) blacklistPods(cluster *yugabytev1alpha1.YBCluster, cnt int32) error {
+	// TODO(bhavin192): should we pass something else than cluster here, like the sts?
+	tserverReplicas := cluster.Spec.Tserver.Replicas
+	for podNum := tserverReplicas + cnt - 1; podNum >= tserverReplicas; podNum-- {
+		pod := &corev1.Pod{}
+		err := r.client.Get(context.TODO(), types.NamespacedName{
+			Namespace: cluster.GetNamespace(),
+			Name:      fmt.Sprintf("%s-%d", tserverName, podNum),
+		}, pod)
+		if err != nil {
+			return err
+		}
+
+		if pod.Annotations == nil {
+			pod.SetAnnotations(map[string]string{blacklistAnnotation: "true"})
+		} else if _, ok := pod.Annotations[blacklistAnnotation]; !ok {
+			pod.Annotations[blacklistAnnotation] = "true"
+		}
+		if err = r.client.Update(context.TODO(), pod); err != nil {
+			// TODO(bhavin192): failed to add
+			// blacklist annotation to Pods?
+			return err
+		}
 	}
+	return nil
+
+	// pods := &corev1.PodList{}
+	// err := r.client.List(context.TODO(),
+	// 	client.MatchingLabels(sts.Spec.Template.GetLabels()).InNamespace(sts.GetNamespace()),
+	// 	pods)
+	// if err != nil {
+	// 	// TODO(bhavin192): failed to blacklist Pods?
+	// 	return err
+	// }
 	// (&client.ListOptions{}).
 	// 	MatchingLabels(sts.Spec.Template.
 	// 		GetLabels()).InNamespace(sts.GetNamespace())
 	// https://git.io/Jfw0p
-	for _, pod := range pods.Items {
-		if !pod.ObjectMeta.DeletionTimestamp.IsZero() {
-			// TODO(bhavin192): can use && here
-			if containsString(pod.Finalizers, tserverFinalizer) {
-				// ant := pod.GetAnnotations()
-				// logger.Infof("%T", ant)
-				if pod.Annotations == nil {
-					pod.SetAnnotations(map[string]string{blacklistAnnotation: "true"})
-				} else if _, ok := pod.Annotations[blacklistAnnotation]; !ok {
-					pod.Annotations[blacklistAnnotation] = "true"
-				}
-				// TODO(bhavin192): should update the whole PodList at once?
-				if err = r.client.Update(context.TODO(), &pod); err != nil {
-					// TODO(bhavin192): failed to add
-					// blacklist annotation to Pods?
-					return err
-				}
-			}
-		}
-	}
-	return nil
+	// for _, pod := range pods.Items {
+	// 	if !pod.ObjectMeta.DeletionTimestamp.IsZero() {
+	// 		// TODO(bhavin192): can use && here
+	// 		if containsString(pod.Finalizers, tserverFinalizer) {
+	// 			// ant := pod.GetAnnotations()
+	// 			// logger.Infof("%T", ant)
+	// 			if pod.Annotations == nil {
+	// 				pod.SetAnnotations(map[string]string{blacklistAnnotation: "true"})
+	// 			} else if _, ok := pod.Annotations[blacklistAnnotation]; !ok {
+	// 				pod.Annotations[blacklistAnnotation] = "true"
+	// 			}
+	// 			// TODO(bhavin192): should update the whole PodList at once?
+	// 			if err = r.client.Update(context.TODO(), &pod); err != nil {
+	// 				// TODO(bhavin192): failed to add
+	// 				// blacklist annotation to Pods?
+	// 				return err
+	// 			}
+	// 		}
+	// 	}
+	// }
+	// return nil
 }
 
 // syncblacklist makes sure that the pods with blacklist annotation
@@ -766,6 +877,11 @@ func (r *ReconcileYBCluster) checkDataMoveProgress(cluster *yugabytev1alpha1.YBC
 	logger.Info("Current progress:", p)
 	// TODO(bhavin192): replace this once we switch to
 	// Status.Conditions
+
+	// TODO(bhavin192): remove this
+	logger.Infof("current status values: DataMoveCond: %s, DataMoveChangeTime: %s", cluster.Status.DataMoveCond, cluster.Status.DataMoveChangeTime)
+	logger.Infof("current status values: TServerScaleDownCond: %s, TSScaleDownChangeTime: %s", cluster.Status.TServerScaleDownCond, cluster.Status.TSScaleDownChangeTime)
+
 	// Toggle the progress
 	if p != "100" {
 		if cluster.Status.DataMoveCond == "False" || cluster.Status.DataMoveCond == "" {
@@ -778,6 +894,9 @@ func (r *ReconcileYBCluster) checkDataMoveProgress(cluster *yugabytev1alpha1.YBC
 			cluster.Status.DataMoveChangeTime = metav1.Now()
 		}
 	}
+
+	// TODO(bhavin192): have better info
+	logger.Infof("updating status values: DataMoveCond: %s, DataMoveChangeTime: %s", cluster.Status.DataMoveCond, cluster.Status.DataMoveChangeTime)
 
 	// TODO(bhavin192): we should have way to reconcile with
 	// increasing time if the data move is in progress. Check

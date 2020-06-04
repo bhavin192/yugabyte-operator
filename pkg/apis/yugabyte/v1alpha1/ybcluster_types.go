@@ -113,9 +113,9 @@ type YBClusterStatus struct {
 	// TODO(bhavin192): remove this once we use Conditions
 	// TODO(bhavin192): should this have omitempty
 	DataMoveCond          string      `json:"dataMoveCond"`
-	DataMoveChangeTime    metav1.Time `json:"dataMoveChangeTime"`
+	DataMoveChangeTime    metav1.Time `json:"dataMoveChangeTime,omitempty"`
 	TServerScaleDownCond  string      `json:"tServerScaleDownCond"`
-	TSScaleDownChangeTime metav1.Time `json:"tSScaleDownChangeTime"`
+	TSScaleDownChangeTime metav1.Time `json:"tSScaleDownChangeTime,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

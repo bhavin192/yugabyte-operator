@@ -185,9 +185,7 @@ spec:
           - masterReplicas
           - tserverReplicas
           - dataMoveCond
-          - dataMoveChangeTime
           - tServerScaleDownCond
-          - tSScaleDownChangeTime
           type: object
   version: v1alpha1
   versions:

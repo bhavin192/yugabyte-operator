@@ -150,7 +150,7 @@ func schema_pkg_apis_yugabyte_v1alpha1_YBClusterStatus(ref common.ReferenceCallb
 						},
 					},
 				},
-				Required: []string{"masterReplicas", "tserverReplicas", "dataMoveCond", "dataMoveChangeTime", "tServerScaleDownCond", "tSScaleDownChangeTime"},
+				Required: []string{"masterReplicas", "tserverReplicas", "dataMoveCond", "tServerScaleDownCond"},
 			},
 		},
 		Dependencies: []string{
