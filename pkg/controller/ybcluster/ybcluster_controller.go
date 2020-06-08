@@ -9,6 +9,7 @@ import (
 	"github.com/coreos/pkg/capnslog"
 	yugabytev1alpha1 "github.com/yugabyte/yugabyte-k8s-operator/pkg/apis/yugabyte/v1alpha1"
 	"github.com/yugabyte/yugabyte-k8s-operator/pkg/kube"
+	"github.com/yugabyte/yugabyte-k8s-operator/pkg/ybconfig"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -73,7 +74,6 @@ const (
 	storageClassDefault         = "standard"
 	labelHostname               = "kubernetes.io/hostname"
 	appLabel                    = "app"
-	tserverFinalizer            = "yugabyte.com/blacklist-yb-tserver"
 	blacklistAnnotation         = "yugabyte.com/blacklist"
 	ybAdminCommand              = "/home/yugabyte/bin/yb-admin"
 )
@@ -732,21 +732,6 @@ func (r *ReconcileYBCluster) syncBlacklist(cluster *yugabytev1alpha1.YBCluster, 
 		return err
 	}
 
-	// TODO(bhavin192): remove/move this once we have proper way
-	// to parse the configuration
-	blacklistFromConfig := func(cfg string) []string {
-		cfgLines := strings.Split(cfg, "\n")
-		hostPrefix := "    host: "
-		hosts := make([]string, 0)
-		for _, l := range cfgLines {
-			if strings.HasPrefix(l, hostPrefix) {
-				host := strings.Split(l, "\"")[1]
-				hosts = append(hosts, host)
-			}
-		}
-		return hosts
-	}
-
 	// Fetch current blacklist from YB-Master
 	getConfigCmd := runWithShell("bash",
 		[]string{
@@ -767,17 +752,23 @@ func (r *ReconcileYBCluster) syncBlacklist(cluster *yugabytev1alpha1.YBCluster, 
 	// TODO(bhavin192): remove this
 	logger.Infof("got the config, cout: %s, cerr: %s", cout, cerr)
 
-	currentBl := blacklistFromConfig(cout)
+	universeCfg, err := ybconfig.NewFromJSON([]byte(cout))
+	if err != nil {
+		return err
+	}
+
+	currentBl := universeCfg.GetBlacklist()
 
 	// TODO(bhavin192): remove this
 	logger.Infof("current blacklist: %#v", currentBl)
 
 	for _, pod := range pods.Items {
-		podFQDN := fmt.Sprintf(
-			"%s.%s.%s.svc.cluster.local",
+		podHostPort := fmt.Sprintf(
+			"%s.%s.%s.svc.cluster.local:%d",
 			pod.ObjectMeta.Name,
 			tserverNamePlural,
 			cluster.Namespace,
+			cluster.Spec.Tserver.TserverRPCPort,
 		)
 
 		operation := "ADD"
@@ -792,16 +783,16 @@ func (r *ReconcileYBCluster) syncBlacklist(cluster *yugabytev1alpha1.YBCluster, 
 			operation = "REMOVE"
 		}
 
-		if containsString(currentBl, podFQDN) {
+		if containsString(currentBl, podHostPort) {
 			if operation == "ADD" {
 				// TODO(bhavin192): make this detailed
-				logger.Infof("pod %s is already in YB-Master blacklist, skipping.", podFQDN)
+				logger.Infof("pod %s is already in YB-Master blacklist, skipping.", podHostPort)
 				continue
 			}
 		} else {
 			if operation == "REMOVE" {
 				// TODO(bhavin192): make this detailed
-				logger.Infof("pod %s is not in YB-Master blacklist, skipping.", podFQDN)
+				logger.Infof("pod %s is not in YB-Master blacklist, skipping.", podHostPort)
 				continue
 			}
 		}
@@ -817,11 +808,7 @@ func (r *ReconcileYBCluster) syncBlacklist(cluster *yugabytev1alpha1.YBCluster, 
 				),
 				"change_blacklist",
 				operation,
-				fmt.Sprintf(
-					"%s:%d",
-					podFQDN,
-					cluster.Spec.Tserver.TserverRPCPort,
-				),
+				podHostPort,
 			})
 
 		// TODO(bhavin192): remove this
