@@ -14,6 +14,7 @@ spec:
     status: {}
   validation:
     openAPIV3Schema:
+      description: YBCluster is the Schema for the ybclusters API
       properties:
         apiVersion:
           description: 'APIVersion defines the versioned schema of this representation
@@ -28,10 +29,14 @@ spec:
         metadata:
           type: object
         spec:
+          description: YBClusterSpec defines the desired state of YBCluster
           properties:
             image:
+              description: YBImageSpec defines docker image specific attributes.
               properties:
                 pullPolicy:
+                  description: PullPolicy describes a policy for if/when to pull a
+                    container image
                   type: string
                 repository:
                   type: string
@@ -39,11 +44,13 @@ spec:
                   type: string
               type: object
             master:
+              description: YBMasterSpec defines attributes for YBMaster pods.
               properties:
                 enableLoadBalancer:
                   type: boolean
                 gflags:
                   items:
+                    description: YBGFlagSpec defines key-value pairs for each GFlag.
                     properties:
                       key:
                         type: string
@@ -61,14 +68,35 @@ spec:
                   minimum: 1
                   type: integer
                 podManagementPolicy:
+                  description: PodManagementPolicyType defines the policy for creating
+                    pods under a stateful set.
                   type: string
                 replicas:
                   format: int32
                   minimum: 1
                   type: integer
                 resources:
+                  description: ResourceRequirements describes the compute resource
+                    requirements.
+                  properties:
+                    limits:
+                      additionalProperties:
+                        type: string
+                      description: 'Limits describes the maximum amount of compute
+                        resources allowed. More info: https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/'
+                      type: object
+                    requests:
+                      additionalProperties:
+                        type: string
+                      description: 'Requests describes the minimum amount of compute
+                        resources required. If Requests is omitted for a container,
+                        it defaults to Limits if that is explicitly specified, otherwise
+                        to an implementation-defined value. More info: https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/'
+                      type: object
                   type: object
                 storage:
+                  description: YBStorageSpec defines storage specific attributes for
+                    YBMaster/YBTserver pods.
                   properties:
                     count:
                       format: int32
@@ -90,10 +118,13 @@ spec:
               minimum: 1
               type: integer
             tls:
+              description: YBTLSSpec defines TLS encryption specific attributes
               properties:
                 enabled:
                   type: boolean
                 rootCA:
+                  description: YBRootCASpec defines Root CA cert & key attributes
+                    required for enabling TLS encryption.
                   properties:
                     cert:
                       type: string
@@ -102,11 +133,13 @@ spec:
                   type: object
               type: object
             tserver:
+              description: YBTServerSpec defines attributes for YBTServer pods.
               properties:
                 enableLoadBalancer:
                   type: boolean
                 gflags:
                   items:
+                    description: YBGFlagSpec defines key-value pairs for each GFlag.
                     properties:
                       key:
                         type: string
@@ -116,14 +149,35 @@ spec:
                   minItems: 1
                   type: array
                 podManagementPolicy:
+                  description: PodManagementPolicyType defines the policy for creating
+                    pods under a stateful set.
                   type: string
                 replicas:
                   format: int32
                   minimum: 1
                   type: integer
                 resources:
+                  description: ResourceRequirements describes the compute resource
+                    requirements.
+                  properties:
+                    limits:
+                      additionalProperties:
+                        type: string
+                      description: 'Limits describes the maximum amount of compute
+                        resources allowed. More info: https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/'
+                      type: object
+                    requests:
+                      additionalProperties:
+                        type: string
+                      description: 'Requests describes the minimum amount of compute
+                        resources required. If Requests is omitted for a container,
+                        it defaults to Limits if that is explicitly specified, otherwise
+                        to an implementation-defined value. More info: https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/'
+                      type: object
                   type: object
                 storage:
+                  description: YBStorageSpec defines storage specific attributes for
+                    YBMaster/YBTserver pods.
                   properties:
                     count:
                       format: int32
@@ -158,6 +212,7 @@ spec:
               type: object
           type: object
         status:
+          description: YBClusterStatus defines the observed state of YBCluster
           properties:
             dataMoveChangeTime:
               format: date-time
@@ -182,11 +237,12 @@ spec:
               format: int64
               type: integer
           required:
-          - masterReplicas
-          - tserverReplicas
           - dataMoveCond
+          - masterReplicas
           - tServerScaleDownCond
+          - tserverReplicas
           type: object
+      type: object
   version: v1alpha1
   versions:
   - name: v1alpha1

@@ -693,7 +693,7 @@ func (r *ReconcileYBCluster) blacklistPods(cluster *yugabytev1alpha1.YBCluster, 
 // sts object.
 func (r *ReconcileYBCluster) syncBlacklist(cluster *yugabytev1alpha1.YBCluster, sts *appsv1.StatefulSet) error {
 	pods := &corev1.PodList{}
-	opts := []client.ListOptions{
+	opts := []client.ListOption{
 		client.InNamespace(sts.GetNamespace()),
 		client.MatchingLabels(sts.Spec.Template.GetLabels()),
 	}

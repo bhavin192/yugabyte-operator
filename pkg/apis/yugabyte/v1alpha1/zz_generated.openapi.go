@@ -29,6 +29,7 @@ func schema_pkg_apis_yugabyte_v1alpha1_YBCluster(ref common.ReferenceCallback) c
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "YBCluster is the Schema for the ybclusters API",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
 						SchemaProps: spec.SchemaProps{
@@ -72,6 +73,7 @@ func schema_pkg_apis_yugabyte_v1alpha1_YBClusterSpec(ref common.ReferenceCallbac
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "YBClusterSpec defines the desired state of YBCluster",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"replicationFactor": {
 						SchemaProps: spec.SchemaProps{
@@ -113,6 +115,7 @@ func schema_pkg_apis_yugabyte_v1alpha1_YBClusterStatus(ref common.ReferenceCallb
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "YBClusterStatus defines the observed state of YBCluster",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"masterReplicas": {
 						SchemaProps: spec.SchemaProps{
@@ -163,6 +166,7 @@ func schema_pkg_apis_yugabyte_v1alpha1_YBGFlagSpec(ref common.ReferenceCallback)
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "YBGFlagSpec defines key-value pairs for each GFlag.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"key": {
 						SchemaProps: spec.SchemaProps{
@@ -179,7 +183,6 @@ func schema_pkg_apis_yugabyte_v1alpha1_YBGFlagSpec(ref common.ReferenceCallback)
 				},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -188,6 +191,7 @@ func schema_pkg_apis_yugabyte_v1alpha1_YBImageSpec(ref common.ReferenceCallback)
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "YBImageSpec defines docker image specific attributes.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"repository": {
 						SchemaProps: spec.SchemaProps{
@@ -210,7 +214,6 @@ func schema_pkg_apis_yugabyte_v1alpha1_YBImageSpec(ref common.ReferenceCallback)
 				},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -219,6 +222,7 @@ func schema_pkg_apis_yugabyte_v1alpha1_YBMasterSpec(ref common.ReferenceCallback
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "YBMasterSpec defines attributes for YBMaster pods.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"replicas": {
 						SchemaProps: spec.SchemaProps{
@@ -261,6 +265,11 @@ func schema_pkg_apis_yugabyte_v1alpha1_YBMasterSpec(ref common.ReferenceCallback
 						},
 					},
 					"gflags": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "atomic",
+							},
+						},
 						SchemaProps: spec.SchemaProps{
 							Type: []string{"array"},
 							Items: &spec.SchemaOrArray{
@@ -285,6 +294,7 @@ func schema_pkg_apis_yugabyte_v1alpha1_YBRootCASpec(ref common.ReferenceCallback
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "YBRootCASpec defines Root CA cert & key attributes required for enabling TLS encryption.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"cert": {
 						SchemaProps: spec.SchemaProps{
@@ -301,7 +311,6 @@ func schema_pkg_apis_yugabyte_v1alpha1_YBRootCASpec(ref common.ReferenceCallback
 				},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -310,6 +319,7 @@ func schema_pkg_apis_yugabyte_v1alpha1_YBStorageSpec(ref common.ReferenceCallbac
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "YBStorageSpec defines storage specific attributes for YBMaster/YBTserver pods.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"count": {
 						SchemaProps: spec.SchemaProps{
@@ -332,7 +342,6 @@ func schema_pkg_apis_yugabyte_v1alpha1_YBStorageSpec(ref common.ReferenceCallbac
 				},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -341,6 +350,7 @@ func schema_pkg_apis_yugabyte_v1alpha1_YBTLSSpec(ref common.ReferenceCallback) c
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "YBTLSSpec defines TLS encryption specific attributes",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"enabled": {
 						SchemaProps: spec.SchemaProps{
@@ -366,6 +376,7 @@ func schema_pkg_apis_yugabyte_v1alpha1_YBTServerSpec(ref common.ReferenceCallbac
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "YBTServerSpec defines attributes for YBTServer pods.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"replicas": {
 						SchemaProps: spec.SchemaProps{
@@ -426,6 +437,11 @@ func schema_pkg_apis_yugabyte_v1alpha1_YBTServerSpec(ref common.ReferenceCallbac
 						},
 					},
 					"gflags": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "atomic",
+							},
+						},
 						SchemaProps: spec.SchemaProps{
 							Type: []string{"array"},
 							Items: &spec.SchemaOrArray{

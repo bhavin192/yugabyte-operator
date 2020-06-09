@@ -59,6 +59,7 @@ type YBMasterSpec struct {
 	Storage             YBStorageSpec                  `json:"storage,omitempty"`
 	Resources           v1.ResourceRequirements        `json:"resources,omitempty"`
 	// +kubebuilder:validation:MinItems=1
+	// +listType=atomic
 	Gflags []YBGFlagSpec `json:"gflags,omitempty"`
 }
 
@@ -82,6 +83,7 @@ type YBTServerSpec struct {
 	Storage             YBStorageSpec                  `json:"storage,omitempty"`
 	Resources           v1.ResourceRequirements        `json:"resources,omitempty"`
 	// +kubebuilder:validation:MinItems=1
+	// +listType=atomic
 	Gflags []YBGFlagSpec `json:"gflags,omitempty"`
 }
 
