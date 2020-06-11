@@ -1,6 +1,7 @@
 package v1alpha1
 
 import (
+	"github.com/operator-framework/operator-sdk/pkg/status"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -110,12 +111,8 @@ type YBClusterStatus struct {
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
 	MasterReplicas  int64 `json:"masterReplicas"`
 	TserverReplicas int64 `json:"tserverReplicas"`
-	// TODO(bhavin192): remove this once we use Conditions
-	// TODO(bhavin192): should this have omitempty
-	DataMoveCond          string      `json:"dataMoveCond"`
-	DataMoveChangeTime    metav1.Time `json:"dataMoveChangeTime,omitempty"`
-	TServerScaleDownCond  string      `json:"tServerScaleDownCond"`
-	TSScaleDownChangeTime metav1.Time `json:"tSScaleDownChangeTime,omitempty"`
+	// Conditions represent the latest available observations of an object's state
+	Conditions status.Conditions `json:"conditions"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

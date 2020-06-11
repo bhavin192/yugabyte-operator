@@ -7,13 +7,13 @@ import (
 	"time"
 
 	"github.com/coreos/pkg/capnslog"
+	"github.com/operator-framework/operator-sdk/pkg/status"
 	yugabytev1alpha1 "github.com/yugabyte/yugabyte-k8s-operator/pkg/apis/yugabyte/v1alpha1"
 	"github.com/yugabyte/yugabyte-k8s-operator/pkg/kube"
 	"github.com/yugabyte/yugabyte-k8s-operator/pkg/ybconfig"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -78,6 +78,11 @@ const (
 	appLabel                    = "app"
 	blacklistAnnotation         = "yugabyte.com/blacklist"
 	ybAdminCommand              = "/home/yugabyte/bin/yb-admin"
+)
+
+const (
+	movingDataCondition          status.ConditionType = "MovingData"
+	scalingDownTServersCondition status.ConditionType = "ScalingDownTServers"
 )
 
 /**
@@ -544,14 +549,6 @@ func (r *ReconcileYBCluster) reconcileStatefulsets(cluster *yugabytev1alpha1.YBC
 	} else if err != nil {
 		return err
 	} else {
-		// TODO(bhavin192): remove this hack once we switch to Conditions
-		if cluster.Status.DataMoveChangeTime.IsZero() {
-			cluster.Status.DataMoveChangeTime = metav1.Now()
-		}
-		if cluster.Status.TSScaleDownChangeTime.IsZero() {
-			cluster.Status.TSScaleDownChangeTime = metav1.Now()
-		}
-
 		// Don't requeue if TServer replica count is less than
 		// cluster replication factor
 		if cluster.Spec.Tserver.Replicas < cluster.Spec.ReplicationFactor {
@@ -572,12 +569,16 @@ func (r *ReconcileYBCluster) reconcileStatefulsets(cluster *yugabytev1alpha1.YBC
 
 			// TODO(bhavin192): add the TServer count in
 			// status as well
-			if cluster.Status.TServerScaleDownCond == "" || cluster.Status.TServerScaleDownCond == "False" {
-				cluster.Status.TServerScaleDownCond = "True"
-				cluster.Status.TSScaleDownChangeTime = metav1.Now()
+
+			tserverScaleCond := status.Condition{
+				Type:    scalingDownTServersCondition,
+				Status:  corev1.ConditionTrue,
+				Reason:  status.ConditionReason("ScaleDownInProgress"),
+				Message: "one or more TServer(s) are scaling down",
 			}
-			// TODO(bhavin192): have better info
-			logger.Infof("updating status TServerScaleDownCond: %s, TSScaleDownChageTime: %s", cluster.Status.TServerScaleDownCond, cluster.Status.TSScaleDownChangeTime)
+			logger.Infof("updating Status condition %s: %s", tserverScaleCond.Type, tserverScaleCond.Status)
+			cluster.Status.Conditions.SetCondition(tserverScaleCond)
+
 			// TODO(bhavin192): should we update the CR at
 			// the end instead of updating it at different
 			// places. :HELP:
@@ -609,17 +610,23 @@ func (r *ReconcileYBCluster) reconcileStatefulsets(cluster *yugabytev1alpha1.YBC
 
 		allowStsUpdate := true
 		if tserverScaleDown > 0 {
-			if cluster.Status.DataMoveCond == "True" || cluster.Status.TServerScaleDownCond == "True" {
+			dataMoveCond := cluster.Status.Conditions.GetCondition(movingDataCondition)
+			tserverScaleDownCond := cluster.Status.Conditions.GetCondition(scalingDownTServersCondition)
+			if dataMoveCond == nil || tserverScaleDownCond == nil {
+				err := fmt.Errorf("status condition %s or %s is nil", movingDataCondition, scalingDownTServersCondition)
+				logger.Error(err)
+				return err
+			}
+
+			if dataMoveCond.IsTrue() || tserverScaleDownCond.IsTrue() {
 				allowStsUpdate = false
 			}
-			if cluster.Status.DataMoveCond == "False" { // && cluster.Status.TServerScaleDownCond == "False" {
-				// TODO(bhavin192): use heartbeat time
-				// once we switch to
-				// Status.Conditions. It will make
-				// sure that we handle case of 0
-				// tablets on a tserver. Should have
-				// gap of at least 5 minutes.
-				if cluster.Status.DataMoveChangeTime.After(cluster.Status.TSScaleDownChangeTime.Time) {
+			if dataMoveCond.IsFalse() {
+				// TODO(bhavin192): add heartbeat time
+				// so that we can handle the 0 tablets
+				// on a tserver case. Should have gap
+				// of at least 5 minutes.
+				if dataMoveCond.LastTransitionTime.After(tserverScaleDownCond.LastTransitionTime.Time) {
 					allowStsUpdate = true
 				}
 			}
@@ -636,13 +643,17 @@ func (r *ReconcileYBCluster) reconcileStatefulsets(cluster *yugabytev1alpha1.YBC
 				logger.Errorf("failed to update tserver statefulset object. err: %+v", err)
 				return err
 			}
+
 			// Update the Status after updating the STS
-			if cluster.Status.TServerScaleDownCond == "True" || cluster.Status.TServerScaleDownCond == "" {
-				cluster.Status.TServerScaleDownCond = "False"
-				cluster.Status.TSScaleDownChangeTime = metav1.Now()
-				if err := r.client.Status().Update(context.TODO(), cluster); err != nil {
-					return err
-				}
+			tserverScaleCond := status.Condition{
+				Type:    scalingDownTServersCondition,
+				Status:  corev1.ConditionFalse,
+				Reason:  status.ConditionReason("NoScaleDownInProgress"),
+				Message: "no TServer(s) are scaling down",
+			}
+			cluster.Status.Conditions.SetCondition(tserverScaleCond)
+			if err := r.client.Status().Update(context.TODO(), cluster); err != nil {
+				return err
 			}
 		} else {
 			// TODO(bhavin192): there should be better to
@@ -828,28 +839,20 @@ func (r *ReconcileYBCluster) checkDataMoveProgress(cluster *yugabytev1alpha1.YBC
 	logger.Infof("get_load_move_completion: out: %s, err: %s", cout, cerr)
 	p := cout[strings.Index(cout, "= ")+2 : strings.Index(cout, " :")]
 	logger.Info("Current progress:", p)
-	// TODO(bhavin192): replace this once we switch to
-	// Status.Conditions
 
-	// TODO(bhavin192): remove this
-	logger.Infof("current status values: DataMoveCond: %s, DataMoveChangeTime: %s", cluster.Status.DataMoveCond, cluster.Status.DataMoveChangeTime)
-	logger.Infof("current status values: TServerScaleDownCond: %s, TSScaleDownChangeTime: %s", cluster.Status.TServerScaleDownCond, cluster.Status.TSScaleDownChangeTime)
-
-	// Toggle the progress
+	// Toggle the MovingData condition
+	cond := status.Condition{Type: movingDataCondition}
 	if p != "100" {
-		if cluster.Status.DataMoveCond == "False" || cluster.Status.DataMoveCond == "" {
-			cluster.Status.DataMoveCond = "True"
-			cluster.Status.DataMoveChangeTime = metav1.Now()
-		}
+		cond.Status = corev1.ConditionTrue
+		cond.Reason = status.ConditionReason("DataMoveInProgress")
+		cond.Message = "data move operation is in progress"
 	} else {
-		if cluster.Status.DataMoveCond == "True" || cluster.Status.DataMoveCond == "" {
-			cluster.Status.DataMoveCond = "False"
-			cluster.Status.DataMoveChangeTime = metav1.Now()
-		}
+		cond.Status = corev1.ConditionFalse
+		cond.Reason = status.ConditionReason("NoDataMoveInProgress")
+		cond.Message = "no data move operation is in progress"
 	}
-
-	// TODO(bhavin192): have better info
-	logger.Infof("updating status values: DataMoveCond: %s, DataMoveChangeTime: %s", cluster.Status.DataMoveCond, cluster.Status.DataMoveChangeTime)
+	logger.Infof("updating Status condition %s: %s", cond.Type, cond.Status)
+	cluster.Status.Conditions.SetCondition(cond)
 
 	// TODO(bhavin192): we should have way to reconcile with
 	// increasing time if the data move is in progress. Check
