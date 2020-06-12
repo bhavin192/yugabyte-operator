@@ -559,17 +559,6 @@ func (r *ReconcileYBCluster) reconcileStatefulsets(cluster *yugabytev1alpha1.YBC
 		// TODO(bhavin192): should be moved out as separate function
 		// Scale down logic
 
-		// tserverScaleDown := *found.Spec.Replicas - cluster.Spec.Tserver.Replicas
-		// Ignore new/changed replica count if scale down
-		// operation is in progress
-		// TODO(bhavin192): FIX this
-		// if cluster.Status.Conditions.IsTrueFor(scalingDownTServersCondition) {
-		// 	tserverScaleDown = *found.Spec.Replicas - cluster.Status.TargetedTServerReplicas
-		// } else {
-		// 	cluster.Status.TargetedTServerReplicas = cluster.Spec.Tserver.Replicas
-		// 	// TODO(bhavin192): call Update() on the status.
-		// }
-
 		// Ignore new/changed replica count if scale down
 		// operation is in progress
 		if cluster.Status.Conditions.IsFalseFor(scalingDownTServersCondition) {
@@ -583,7 +572,6 @@ func (r *ReconcileYBCluster) reconcileStatefulsets(cluster *yugabytev1alpha1.YBC
 		if tserverScaleDown > 0 {
 			// TODO(bhavin192): have better info
 			logger.Infof("scaling down TServer replicas by %d.", tserverScaleDown)
-			// cluster.Status.TargetedTServerReplicas = tserverScaleDown
 
 			tserverScaleCond := status.Condition{
 				Type:    scalingDownTServersCondition,
@@ -617,8 +605,7 @@ func (r *ReconcileYBCluster) reconcileStatefulsets(cluster *yugabytev1alpha1.YBC
 			return err
 		}
 
-		// TODO(bhavin192): place this somewhere else and make
-		// sure it's able to return reconcile.Result as well
+		// TODO(bhavin192): place this somewhere else
 		if err := r.checkDataMoveProgress(cluster); err != nil {
 			return err
 		}
@@ -652,12 +639,6 @@ func (r *ReconcileYBCluster) reconcileStatefulsets(cluster *yugabytev1alpha1.YBC
 
 		if allowStsUpdate {
 			logger.Info("updating tserver statefulset")
-			// TODO(bhavin192): make sure we update to
-			// correct replica count i.e. the one saved in
-			// Status. Is it safe to override the values
-			// from cluster.Spec? :ANS: modified
-			// updateStatefulSet to make it aware of
-			// TargetedTServerReplicas.
 			updateTServerStatefulset(cluster, found)
 			if err := r.client.Update(context.TODO(), found); err != nil {
 				logger.Errorf("failed to update tserver statefulset object. err: %+v", err)
