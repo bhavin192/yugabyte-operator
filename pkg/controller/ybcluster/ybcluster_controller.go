@@ -558,17 +558,32 @@ func (r *ReconcileYBCluster) reconcileStatefulsets(cluster *yugabytev1alpha1.YBC
 
 		// TODO(bhavin192): should be moved out as separate function
 		// Scale down logic
-		// TODO(bhavin192): if the scale down count/condition
-		// status field is set then don't recalculate below
-		// value
-		tserverScaleDown := *found.Spec.Replicas - cluster.Spec.Tserver.Replicas
+
+		// tserverScaleDown := *found.Spec.Replicas - cluster.Spec.Tserver.Replicas
+		// Ignore new/changed replica count if scale down
+		// operation is in progress
+		// TODO(bhavin192): FIX this
+		// if cluster.Status.Conditions.IsTrueFor(scalingDownTServersCondition) {
+		// 	tserverScaleDown = *found.Spec.Replicas - cluster.Status.TargetedTServerReplicas
+		// } else {
+		// 	cluster.Status.TargetedTServerReplicas = cluster.Spec.Tserver.Replicas
+		// 	// TODO(bhavin192): call Update() on the status.
+		// }
+
+		// Ignore new/changed replica count if scale down
+		// operation is in progress
+		if cluster.Status.Conditions.IsFalseFor(scalingDownTServersCondition) {
+			cluster.Status.TargetedTServerReplicas = cluster.Spec.Tserver.Replicas
+			if err := r.client.Status().Update(context.TODO(), cluster); err != nil {
+				return err
+			}
+		}
+		tserverScaleDown := *found.Spec.Replicas - cluster.Status.TargetedTServerReplicas
 
 		if tserverScaleDown > 0 {
 			// TODO(bhavin192): have better info
 			logger.Infof("scaling down TServer replicas by %d.", tserverScaleDown)
-
-			// TODO(bhavin192): add the TServer count in
-			// status as well
+			// cluster.Status.TargetedTServerReplicas = tserverScaleDown
 
 			tserverScaleCond := status.Condition{
 				Type:    scalingDownTServersCondition,
@@ -610,6 +625,9 @@ func (r *ReconcileYBCluster) reconcileStatefulsets(cluster *yugabytev1alpha1.YBC
 
 		allowStsUpdate := true
 		if tserverScaleDown > 0 {
+			// TODO(bhavin192): have this whole block as a
+			// separate function which takes cluster and
+			// returns bool, error.
 			dataMoveCond := cluster.Status.Conditions.GetCondition(movingDataCondition)
 			tserverScaleDownCond := cluster.Status.Conditions.GetCondition(scalingDownTServersCondition)
 			if dataMoveCond == nil || tserverScaleDownCond == nil {
@@ -637,7 +655,9 @@ func (r *ReconcileYBCluster) reconcileStatefulsets(cluster *yugabytev1alpha1.YBC
 			// TODO(bhavin192): make sure we update to
 			// correct replica count i.e. the one saved in
 			// Status. Is it safe to override the values
-			// from cluster.Spec? :HELP:
+			// from cluster.Spec? :ANS: modified
+			// updateStatefulSet to make it aware of
+			// TargetedTServerReplicas.
 			updateTServerStatefulset(cluster, found)
 			if err := r.client.Update(context.TODO(), found); err != nil {
 				logger.Errorf("failed to update tserver statefulset object. err: %+v", err)
@@ -657,7 +677,9 @@ func (r *ReconcileYBCluster) reconcileStatefulsets(cluster *yugabytev1alpha1.YBC
 			}
 		} else {
 			// TODO(bhavin192): there should be better to
-			// way to return reconcile.Result
+			// way to return reconcile.Result. This will make it possible
+			// to requeue the request with increasing back off. i.e. Check
+			// after 1m, 5m, 10m ,15m, …
 			return fmt.Errorf("RetryAfter10S")
 		}
 	}
@@ -668,9 +690,9 @@ func (r *ReconcileYBCluster) reconcileStatefulsets(cluster *yugabytev1alpha1.YBC
 // blacklistPods adds yugabyte.com/blacklist: true annotation to the
 // TServer pods
 func (r *ReconcileYBCluster) blacklistPods(cluster *yugabytev1alpha1.YBCluster, cnt int32) error {
-	// TODO(bhavin192): should we pass something else than cluster here, like the sts?
-	tserverReplicas := cluster.Spec.Tserver.Replicas
-	for podNum := tserverReplicas + cnt - 1; podNum >= tserverReplicas; podNum-- {
+	scalingDownTo := cluster.Status.TargetedTServerReplicas
+	tserverReplicas := scalingDownTo + cnt
+	for podNum := tserverReplicas - 1; podNum >= scalingDownTo; podNum-- {
 		pod := &corev1.Pod{}
 		err := r.client.Get(context.TODO(), types.NamespacedName{
 			Namespace: cluster.GetNamespace(),
@@ -851,12 +873,9 @@ func (r *ReconcileYBCluster) checkDataMoveProgress(cluster *yugabytev1alpha1.YBC
 		cond.Reason = status.ConditionReason("NoDataMoveInProgress")
 		cond.Message = "no data move operation is in progress"
 	}
+
 	logger.Infof("updating Status condition %s: %s", cond.Type, cond.Status)
 	cluster.Status.Conditions.SetCondition(cond)
-
-	// TODO(bhavin192): we should have way to reconcile with
-	// increasing time if the data move is in progress. Check
-	// after 1m, 5m, 10m ,15m, …
 	if err := r.client.Status().Update(context.TODO(), cluster); err != nil {
 		return err
 	}

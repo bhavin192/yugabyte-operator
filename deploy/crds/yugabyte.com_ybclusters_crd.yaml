@@ -278,12 +278,20 @@ spec:
                 tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html'
               format: int64
               type: integer
+            targetedTServerReplicas:
+              description: TargetedTServerReplicas is the desired number of replicas
+                currently targeted. If any other operation is going on, then change
+                in spec.tserver.replicas won't modify this value until the operation
+                is completed.
+              format: int32
+              type: integer
             tserverReplicas:
               format: int64
               type: integer
           required:
           - conditions
           - masterReplicas
+          - targetedTServerReplicas
           - tserverReplicas
           type: object
       type: object

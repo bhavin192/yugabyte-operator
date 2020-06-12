@@ -111,6 +111,13 @@ type YBClusterStatus struct {
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
 	MasterReplicas  int64 `json:"masterReplicas"`
 	TserverReplicas int64 `json:"tserverReplicas"`
+
+	// TargetedTServerReplicas is the desired number of replicas
+	// currently targeted. If any other operation is going on,
+	// then change in spec.tserver.replicas won't modify this
+	// value until the operation is completed.
+	TargetedTServerReplicas int32 `json:"targetedTServerReplicas"`
+
 	// Conditions represent the latest available observations of an object's state
 	Conditions status.Conditions `json:"conditions"`
 }
