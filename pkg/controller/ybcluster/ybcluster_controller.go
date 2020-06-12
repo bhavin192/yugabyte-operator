@@ -601,7 +601,7 @@ func (r *ReconcileYBCluster) reconcileStatefulsets(cluster *yugabytev1alpha1.YBC
 
 		// TODO(bhavin192): place this outside of this
 		// updateSTS?
-		if err := r.syncBlacklist(cluster, found); err != nil {
+		if err := r.syncBlacklist(cluster); err != nil {
 			return err
 		}
 
@@ -700,20 +700,18 @@ func (r *ReconcileYBCluster) blacklistPods(cluster *yugabytev1alpha1.YBCluster, 
 // are added to the blacklist in YB-Master configuration. If the
 // annotation is missing, then the pod is removed from YB-Master's
 // blacklist.
-
-// TODO(bhavin192): we can just pass cluster as an argument to this
-// function; then find pods which has app: yb-tserver and cluster-name
-// on them. This way we will be free from requirement of fetching the
-// sts object.
-func (r *ReconcileYBCluster) syncBlacklist(cluster *yugabytev1alpha1.YBCluster, sts *appsv1.StatefulSet) error {
+func (r *ReconcileYBCluster) syncBlacklist(cluster *yugabytev1alpha1.YBCluster) error {
+	// Get list of all the YB-TServer pods
 	pods := &corev1.PodList{}
+
+	labels := createAppLabels(tserverName)
+	labels[ybClusterNameLabel] = cluster.GetName()
 	opts := []client.ListOption{
-		client.InNamespace(sts.GetNamespace()),
-		client.MatchingLabels(sts.Spec.Template.GetLabels()),
+		client.InNamespace(cluster.GetNamespace()),
+		client.MatchingLabels(labels),
 	}
 
 	err := r.client.List(context.TODO(), pods, opts...)
-	// https://git.io/Jfw0p
 	if err != nil {
 		return err
 	}
