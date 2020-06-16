@@ -566,50 +566,7 @@ func (r *ReconcileYBCluster) reconcileStatefulsets(cluster *yugabytev1alpha1.YBC
 			return nil
 		}
 
-		// TODO(bhavin192): should be moved out as separate function
-		// Scale down logic
-
-		// Ignore new/changed replica count if scale down
-		// operation is in progress
-		if cluster.Status.Conditions.IsFalseFor(scalingDownTServersCondition) {
-			cluster.Status.TargetedTServerReplicas = cluster.Spec.Tserver.Replicas
-			if err := r.client.Status().Update(context.TODO(), cluster); err != nil {
-				return err
-			}
-		}
-		tserverScaleDown := *found.Spec.Replicas - cluster.Status.TargetedTServerReplicas
-
-		if tserverScaleDown > 0 {
-			// TODO(bhavin192): have better info
-			logger.Infof("scaling down TServer replicas by %d.", tserverScaleDown)
-
-			tserverScaleCond := status.Condition{
-				Type:    scalingDownTServersCondition,
-				Status:  corev1.ConditionTrue,
-				Reason:  status.ConditionReason("ScaleDownInProgress"),
-				Message: "one or more TServer(s) are scaling down",
-			}
-			logger.Infof("updating Status condition %s: %s", tserverScaleCond.Type, tserverScaleCond.Status)
-			cluster.Status.Conditions.SetCondition(tserverScaleCond)
-
-			// TODO(bhavin192): should we update the CR at
-			// the end instead of updating it at different
-			// places. :HELP:
-			if err := r.client.Status().Update(context.TODO(), cluster); err != nil {
-				return err
-			}
-
-			// TODO(bhavin192): should this be placed somewhere
-			// else?
-			// TODO(bhavin192): should this be called after
-			// updateTserverstatefulset?
-			if err := r.blacklistPods(cluster, tserverScaleDown); err != nil {
-				return err
-			}
-
-		}
-
-		allowStsUpdate, err := allowTServerStsUpdate(tserverScaleDown, cluster)
+		allowStsUpdate, err := r.scaleTServers(*found.Spec.Replicas, cluster)
 		if err != nil {
 			return err
 		}
@@ -643,6 +600,44 @@ func (r *ReconcileYBCluster) reconcileStatefulsets(cluster *yugabytev1alpha1.YBC
 	}
 
 	return nil
+}
+
+// scaleTServers determines if TServers are going to be scaled up or
+// scaled down. If scale down operation is required, it blacklists
+// TServer pods. Retruns boolean indicating StatefulSet should be
+// updated or not.
+func (r *ReconcileYBCluster) scaleTServers(currentReplicas int32, cluster *yugabytev1alpha1.YBCluster) (bool, error) {
+	// Ignore new/changed replica count if scale down
+	// operation is in progress
+	if cluster.Status.Conditions.IsFalseFor(scalingDownTServersCondition) {
+		cluster.Status.TargetedTServerReplicas = cluster.Spec.Tserver.Replicas
+		if err := r.client.Status().Update(context.TODO(), cluster); err != nil {
+			return false, err
+		}
+	}
+	scaleDownBy := currentReplicas - cluster.Status.TargetedTServerReplicas
+
+	if scaleDownBy > 0 {
+		logger.Infof("scaling down TServer replicas by %d.", scaleDownBy)
+
+		tserverScaleCond := status.Condition{
+			Type:    scalingDownTServersCondition,
+			Status:  corev1.ConditionTrue,
+			Reason:  status.ConditionReason("ScaleDownInProgress"),
+			Message: "one or more TServer(s) are scaling down",
+		}
+		logger.Infof("updating Status condition %s: %s", tserverScaleCond.Type, tserverScaleCond.Status)
+		cluster.Status.Conditions.SetCondition(tserverScaleCond)
+		if err := r.client.Status().Update(context.TODO(), cluster); err != nil {
+			return false, err
+		}
+
+		if err := r.blacklistPods(cluster, scaleDownBy); err != nil {
+			return false, err
+		}
+	}
+
+	return allowTServerStsUpdate(scaleDownBy, cluster)
 }
 
 // blacklistPods adds yugabyte.com/blacklist: true annotation to the
