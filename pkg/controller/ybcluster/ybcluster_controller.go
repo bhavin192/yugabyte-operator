@@ -623,6 +623,7 @@ func (r *ReconcileYBCluster) syncBlacklist(cluster *yugabytev1alpha1.YBCluster) 
 	}
 
 	// Fetch current blacklist from YB-Master
+	masterPod := fmt.Sprintf("%s-%d", masterName, 0)
 	getConfigCmd := runWithShell("bash",
 		[]string{
 			ybAdminCommand,
@@ -635,12 +636,13 @@ func (r *ReconcileYBCluster) syncBlacklist(cluster *yugabytev1alpha1.YBCluster) 
 			"get_universe_config",
 		})
 
-	cout, cerr, err := kube.Exec(r.config, cluster.Namespace, fmt.Sprintf("%s-%d", masterName, 0), "", getConfigCmd, nil)
+	logger.Infof("running command in YB-Master pod: %s, command: %q", masterPod, getConfigCmd)
+	cout, _, err := kube.Exec(r.config, cluster.Namespace, masterPod, "", getConfigCmd, nil)
 	if err != nil {
 		return err
 	}
-	// TODO(bhavin192): remove this
-	logger.Infof("got the config, cout: %s, cerr: %s", cout, cerr)
+	// TODO(bhavin192): improve this log line
+	// logger.Infof("got the config, cout: %s, cerr: %s", cout, cerr)
 
 	universeCfg, err := ybconfig.NewFromJSON([]byte(cout))
 	if err != nil {
@@ -648,9 +650,7 @@ func (r *ReconcileYBCluster) syncBlacklist(cluster *yugabytev1alpha1.YBCluster) 
 	}
 
 	currentBl := universeCfg.GetBlacklist()
-
-	// TODO(bhavin192): remove this
-	logger.Infof("current blacklist: %#v", currentBl)
+	logger.Infof("current blacklist from YB-Master: %q", currentBl)
 
 	for _, pod := range pods.Items {
 		podHostPort := fmt.Sprintf(
@@ -675,13 +675,11 @@ func (r *ReconcileYBCluster) syncBlacklist(cluster *yugabytev1alpha1.YBCluster) 
 
 		if containsString(currentBl, podHostPort) {
 			if operation == "ADD" {
-				// TODO(bhavin192): make this detailed
 				logger.Infof("pod %s is already in YB-Master blacklist, skipping.", podHostPort)
 				continue
 			}
 		} else {
 			if operation == "REMOVE" {
-				// TODO(bhavin192): make this detailed
 				logger.Infof("pod %s is not in YB-Master blacklist, skipping.", podHostPort)
 				continue
 			}
@@ -701,15 +699,14 @@ func (r *ReconcileYBCluster) syncBlacklist(cluster *yugabytev1alpha1.YBCluster) 
 				podHostPort,
 			})
 
-		// TODO(bhavin192): remove this
-		logger.Infof("blacklist command: %#v", modBlacklistCmd)
-
 		// blacklist it or remove it
-		cout, cerr, err := kube.Exec(r.config, cluster.Namespace, fmt.Sprintf("%s-%d", masterName, 0), "", modBlacklistCmd, nil)
+		logger.Infof("running command in YB-Master pod: %s, command: %q", masterPod, modBlacklistCmd)
+		cout, cerr, err := kube.Exec(r.config, cluster.Namespace, masterPod, "", modBlacklistCmd, nil)
 		if err != nil {
 			return err
 		}
 
+		// TODO(bhavin192): improve this log line
 		logger.Infof("%s %s to/from blacklist out: %s, err: %s", pod.ObjectMeta.Name, operation, cout, cerr)
 		// TODO(bhavin192): if there is no error, should we
 		// just assume that the pod has been added to the
@@ -739,16 +736,17 @@ func (r *ReconcileYBCluster) checkDataMoveProgress(cluster *yugabytev1alpha1.YBC
 			"get_load_move_completion",
 		},
 	)
-	cout, cerr, err := kube.Exec(r.config, cluster.Namespace, fmt.Sprintf("%s-%d", masterName, 0), "", cmd, nil)
+	masterPod := fmt.Sprintf("%s-%d", masterName, 0)
+	logger.Infof("running command in YB-Master pod: %s, command: %q", masterPod, cmd)
+	cout, _, err := kube.Exec(r.config, cluster.Namespace, masterPod, "", cmd, nil)
 	if err != nil {
 		return err
 	}
 
-	// TODO(bhavin192): remove this
-	logger.Infof("progress command: %#v", cmd)
-	logger.Infof("get_load_move_completion: out: %s, err: %s", cout, cerr)
+	// TODO(bhavin192): improve this long line
+	// logger.Infof("get_load_move_completion: out: %s, err: %s", cout, cerr)
 	p := cout[strings.Index(cout, "= ")+2 : strings.Index(cout, " :")]
-	logger.Info("Current progress:", p)
+	logger.Infof("current data move progress: %s", p)
 
 	// Toggle the MovingData condition
 	cond := status.Condition{Type: movingDataCondition}
