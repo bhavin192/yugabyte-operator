@@ -215,6 +215,16 @@ func (r *ReconcileYBCluster) Reconcile(request reconcile.Request) (reconcile.Res
 		return reconcile.Result{}, err
 	}
 
+	if err := r.syncBlacklist(cluster); err != nil {
+		// Error syncing the blacklist - requeue the request.
+		return reconcile.Result{}, err
+	}
+
+	if err := r.checkDataMoveProgress(cluster); err != nil {
+		// Error checking data move progress - requeue the request.
+		return reconcile.Result{}, err
+	}
+
 	if err = r.reconcileStatefulsets(cluster); err != nil {
 		// TODO(bhavin192): use better way to return the
 		// reconcile.Request
@@ -599,16 +609,6 @@ func (r *ReconcileYBCluster) reconcileStatefulsets(cluster *yugabytev1alpha1.YBC
 
 		}
 
-		// TODO(bhavin192): place this outside of this
-		// updateSTS?
-		if err := r.syncBlacklist(cluster); err != nil {
-			return err
-		}
-
-		// TODO(bhavin192): place this somewhere else
-		if err := r.checkDataMoveProgress(cluster); err != nil {
-			return err
-		}
 
 		allowStsUpdate := true
 		if tserverScaleDown > 0 {
@@ -688,7 +688,7 @@ func (r *ReconcileYBCluster) blacklistPods(cluster *yugabytev1alpha1.YBCluster, 
 		} else if _, ok := pod.Annotations[blacklistAnnotation]; !ok {
 			pod.Annotations[blacklistAnnotation] = "true"
 		}
-		// TODO(bhavin192): should update the whole PodList at once?
+
 		if err = r.client.Update(context.TODO(), pod); err != nil {
 			return err
 		}
@@ -799,12 +799,12 @@ func (r *ReconcileYBCluster) syncBlacklist(cluster *yugabytev1alpha1.YBCluster) 
 		logger.Infof("blacklist command: %#v", modBlacklistCmd)
 
 		// blacklist it or remove it
-		sout, serr, err := kube.Exec(r.config, cluster.Namespace, fmt.Sprintf("%s-%d", masterName, 0), "", modBlacklistCmd, nil)
+		cout, cerr, err := kube.Exec(r.config, cluster.Namespace, fmt.Sprintf("%s-%d", masterName, 0), "", modBlacklistCmd, nil)
 		if err != nil {
 			return err
 		}
 
-		logger.Infof("%s %s to/from blacklist out: %s, err: %s", pod.ObjectMeta.Name, operation, sout, serr)
+		logger.Infof("%s %s to/from blacklist out: %s, err: %s", pod.ObjectMeta.Name, operation, cout, cerr)
 		// TODO(bhavin192): if there is no error, should we
 		// just assume that the pod has been added to the
 		// blacklist and don't query the blacklist to verify
@@ -817,6 +817,9 @@ func (r *ReconcileYBCluster) syncBlacklist(cluster *yugabytev1alpha1.YBCluster) 
 	return nil
 }
 
+// checkDataMoveProgress queries YB-Master for the progress of data
+// move operation. Sets the value of status condition
+// movingDataCondition accordingly.
 func (r *ReconcileYBCluster) checkDataMoveProgress(cluster *yugabytev1alpha1.YBCluster) error {
 	cmd := runWithShell("bash",
 		[]string{
