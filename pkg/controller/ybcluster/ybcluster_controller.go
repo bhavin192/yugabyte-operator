@@ -609,32 +609,9 @@ func (r *ReconcileYBCluster) reconcileStatefulsets(cluster *yugabytev1alpha1.YBC
 
 		}
 
-
-		allowStsUpdate := true
-		if tserverScaleDown > 0 {
-			// TODO(bhavin192): have this whole block as a
-			// separate function which takes cluster and
-			// returns bool, error.
-			dataMoveCond := cluster.Status.Conditions.GetCondition(movingDataCondition)
-			tserverScaleDownCond := cluster.Status.Conditions.GetCondition(scalingDownTServersCondition)
-			if dataMoveCond == nil || tserverScaleDownCond == nil {
-				err := fmt.Errorf("status condition %s or %s is nil", movingDataCondition, scalingDownTServersCondition)
-				logger.Error(err)
-				return err
-			}
-
-			if dataMoveCond.IsTrue() || tserverScaleDownCond.IsTrue() {
-				allowStsUpdate = false
-			}
-			if dataMoveCond.IsFalse() {
-				// TODO(bhavin192): add heartbeat time
-				// so that we can handle the 0 tablets
-				// on a tserver case. Should have gap
-				// of at least 5 minutes.
-				if dataMoveCond.LastTransitionTime.After(tserverScaleDownCond.LastTransitionTime.Time) {
-					allowStsUpdate = true
-				}
-			}
+		allowStsUpdate, err := allowTServerStsUpdate(tserverScaleDown, cluster)
+		if err != nil {
+			return err
 		}
 
 		if allowStsUpdate {
@@ -696,7 +673,37 @@ func (r *ReconcileYBCluster) blacklistPods(cluster *yugabytev1alpha1.YBCluster, 
 	return nil
 }
 
-// syncblacklist makes sure that the pods with blacklist annotation
+// allowTServerStsUpdate decides if TServer StatefulSet should be
+// updated or not. Update is allowed for scale up directly. If it's a
+// scale down, then it checks if data move operation has been
+// completed.
+func allowTServerStsUpdate(scaleDownBy int32, cluster *yugabytev1alpha1.YBCluster) (bool, error) {
+	// Allow scale up directly
+	if scaleDownBy <= 0 {
+		return true, nil
+	}
+
+	dataMoveCond := cluster.Status.Conditions.GetCondition(movingDataCondition)
+	tserverScaleDownCond := cluster.Status.Conditions.GetCondition(scalingDownTServersCondition)
+	if dataMoveCond == nil || tserverScaleDownCond == nil {
+		err := fmt.Errorf("status condition %s or %s is nil", movingDataCondition, scalingDownTServersCondition)
+		logger.Error(err)
+		return false, err
+	}
+
+	// Allow scale down if data move operation has been completed
+	if dataMoveCond.IsFalse() {
+		// TODO(bhavin192): add heartbeat time so that we can
+		// handle the 0 tablets on a TServer case. Should have
+		// gap of at least 5 minutes.
+		if dataMoveCond.LastTransitionTime.After(tserverScaleDownCond.LastTransitionTime.Time) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// syncBlacklist makes sure that the pods with blacklist annotation
 // are added to the blacklist in YB-Master configuration. If the
 // annotation is missing, then the pod is removed from YB-Master's
 // blacklist.
