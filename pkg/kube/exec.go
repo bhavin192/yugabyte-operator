@@ -60,8 +60,6 @@ func Exec(config *restclient.Config, namespace, pod, container string, command [
 // additional parameters to be passed.
 func ExecWithOptions(config *restclient.Config, options ExecOptions) (string, string, error) {
 	const tty = false
-	// TODO(bhavin192): should we pass both config as well as
-	// kubeCli as arguments to this function
 	kubeCli, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		return "", "", err

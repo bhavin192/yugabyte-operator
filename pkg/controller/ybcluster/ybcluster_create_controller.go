@@ -13,9 +13,8 @@ import (
 )
 
 const (
-	// TODO(bhavin192): should be ybclusters.yugabyte.com or yugabyte.com/ybcluster-name
 	// ybClusterNamelabel is the label key for cluster name
-	ybClusterNameLabel = "ybcluster.yugabyte.com/name"
+	ybClusterNameLabel = "yugabyte.com/ybcluster-name"
 )
 
 func createMasterSecret(cluster *yugabytev1alpha1.YBCluster) (*corev1.Secret, error) {
