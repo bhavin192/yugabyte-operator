@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/coreos/pkg/capnslog"
 	"github.com/operator-framework/operator-sdk/pkg/status"
@@ -221,17 +220,7 @@ func (r *ReconcileYBCluster) Reconcile(request reconcile.Request) (reconcile.Res
 		return reconcile.Result{}, err
 	}
 
-	if err = r.reconcileStatefulsets(cluster); err != nil {
-		// TODO(bhavin192): use better way to return the
-		// reconcile.Request
-		if err.Error() == "RetryAfter10S" {
-			return reconcile.Result{RequeueAfter: time.Second * 10}, nil
-		}
-		// Error reconciling statefulsets - requeue the request.
-		return reconcile.Result{}, err
-	}
-
-	return reconcile.Result{}, nil
+	return r.reconcileStatefulsets(cluster)
 }
 
 func (r *ReconcileYBCluster) reconcileSecrets(cluster *yugabytev1alpha1.YBCluster) error {
@@ -498,7 +487,8 @@ func (r *ReconcileYBCluster) reconcileUIServices(cluster *yugabytev1alpha1.YBClu
 	return nil
 }
 
-func (r *ReconcileYBCluster) reconcileStatefulsets(cluster *yugabytev1alpha1.YBCluster) error {
+func (r *ReconcileYBCluster) reconcileStatefulsets(cluster *yugabytev1alpha1.YBCluster) (reconcile.Result, error) {
+	result := reconcile.Result{}
 	// Check if master statefulset already exists
 	found := &appsv1.StatefulSet{}
 	err := r.client.Get(context.TODO(), types.NamespacedName{Name: masterName, Namespace: cluster.Namespace}, found)
@@ -507,26 +497,26 @@ func (r *ReconcileYBCluster) reconcileStatefulsets(cluster *yugabytev1alpha1.YBC
 		if err != nil {
 			// Error creating master statefulset object
 			logger.Errorf("forming master statefulset object failed. err: %+v", err)
-			return err
+			return result, err
 		}
 
 		// Set YBCluster instance as the owner and controller for master statefulset
 		if err := controllerutil.SetControllerReference(cluster, masterStatefulset, r.scheme); err != nil {
-			return err
+			return result, err
 		}
 		logger.Infof("creating a new Statefulset %s for YBMasters in namespace %s", masterStatefulset.Name, masterStatefulset.Namespace)
 		err = r.client.Create(context.TODO(), masterStatefulset)
 		if err != nil {
-			return err
+			return result, err
 		}
 	} else if err != nil {
-		return err
+		return result, err
 	} else {
 		logger.Info("updating master statefulset")
 		updateMasterStatefulset(cluster, found)
 		if err := r.client.Update(context.TODO(), found); err != nil {
 			logger.Errorf("failed to update master statefulset object. err: %+v", err)
-			return err
+			return result, err
 		}
 	}
 
@@ -534,12 +524,12 @@ func (r *ReconcileYBCluster) reconcileStatefulsets(cluster *yugabytev1alpha1.YBC
 	if err != nil {
 		// Error creating tserver statefulset object
 		logger.Errorf("forming tserver statefulset object failed. err: %+v", err)
-		return err
+		return result, err
 	}
 
 	// Set YBCluster instance as the owner and controller for tserver statefulset
 	if err := controllerutil.SetControllerReference(cluster, tserverStatefulset, r.scheme); err != nil {
-		return err
+		return result, err
 	}
 
 	// Check if tserver statefulset already exists
@@ -550,21 +540,21 @@ func (r *ReconcileYBCluster) reconcileStatefulsets(cluster *yugabytev1alpha1.YBC
 
 		err = r.client.Create(context.TODO(), tserverStatefulset)
 		if err != nil {
-			return err
+			return result, err
 		}
 	} else if err != nil {
-		return err
+		return result, err
 	} else {
 		// Don't requeue if TServer replica count is less than
 		// cluster replication factor
 		if cluster.Spec.Tserver.Replicas < cluster.Spec.ReplicationFactor {
 			logger.Errorf("TServer replica count cannot be less than the replication factor of the cluster: '%d' < '%d'.", cluster.Spec.Tserver.Replicas, cluster.Spec.ReplicationFactor)
-			return nil
+			return result, nil
 		}
 
 		allowStsUpdate, err := r.scaleTServers(*found.Spec.Replicas, cluster)
 		if err != nil {
-			return err
+			return result, err
 		}
 
 		if allowStsUpdate {
@@ -572,7 +562,7 @@ func (r *ReconcileYBCluster) reconcileStatefulsets(cluster *yugabytev1alpha1.YBC
 			updateTServerStatefulset(cluster, found)
 			if err := r.client.Update(context.TODO(), found); err != nil {
 				logger.Errorf("failed to update tserver statefulset object. err: %+v", err)
-				return err
+				return result, err
 			}
 
 			// Update the Status after updating the STS
@@ -582,20 +572,19 @@ func (r *ReconcileYBCluster) reconcileStatefulsets(cluster *yugabytev1alpha1.YBC
 				Reason:  status.ConditionReason("NoScaleDownInProgress"),
 				Message: "no TServer(s) are scaling down",
 			}
+			logger.Infof("updating Status condition %s: %s", tserverScaleCond.Type, tserverScaleCond.Status)
 			cluster.Status.Conditions.SetCondition(tserverScaleCond)
 			if err := r.client.Status().Update(context.TODO(), cluster); err != nil {
-				return err
+				return result, err
 			}
 		} else {
-			// TODO(bhavin192): there should be better to
-			// way to return reconcile.Result. This will make it possible
-			// to requeue the request with increasing back off. i.e. Check
-			// after 1m, 5m, 10m ,15m, …
-			return fmt.Errorf("RetryAfter10S")
+			// Requeue with exponential back-off
+			result.Requeue = true
+			return result, nil
 		}
 	}
 
-	return nil
+	return result, nil
 }
 
 func validateCR(spec *yugabytev1alpha1.YBClusterSpec) error {
