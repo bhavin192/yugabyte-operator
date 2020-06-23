@@ -16,12 +16,37 @@ import (
 
 const (
 	blacklistAnnotation = "yugabyte.com/blacklist"
-	ybAdminCommand      = "/home/yugabyte/bin/yb-admin"
+
+	ybAdminBinary                   = "/home/yugabyte/bin/yb-admin"
+	ybAdminGetUniverseConfigCmd     = "get_universe_config"
+	ybAdminChangeBlacklistCmd       = "change_blacklist"
+	ybAdminGetLoadMoveCompletionCmd = "get_load_move_completion"
+	ybAdminMasterAddressesFlag      = "--master_addresses"
+)
+
+type ybAdminBlacklistOperation string
+
+const (
+	ybAdminBlacklistAddOp    ybAdminBlacklistOperation = "ADD"
+	ybAdminBlacklistRemoveOp ybAdminBlacklistOperation = "REMOVE"
+)
+
+const (
+	movingDataCondition          status.ConditionType   = "MovingData"
+	dataMoveInProgress           status.ConditionReason = "DataMoveInProgress"
+	dataMoveInProgressMsg        string                 = "data move operation is in progress"
+	noDataMoveInProgress         status.ConditionReason = "NoDataMoveInProgress"
+	noDataMoveInProgressMsg      string                 = "no data move operation is in progress"
+	scalingDownTServersCondition status.ConditionType   = "ScalingDownTServers"
+	scaleDownInProgress          status.ConditionReason = "ScaleDownInProgress"
+	scaleDownInProgressMsg       string                 = "one or more TServer(s) are scaling down"
+	noScaleDownInProgress        status.ConditionReason = "NoScaleDownInProgress"
+	noScaleDownInProgressMsg     string                 = "no TServer(s) are scaling down"
 )
 
 // scaleTServers determines if TServers are going to be scaled up or
 // scaled down. If scale down operation is required, it blacklists
-// TServer pods. Retruns boolean indicating StatefulSet should be
+// TServer pods. Retruns boolean indicating if StatefulSet should be
 // updated or not.
 func (r *ReconcileYBCluster) scaleTServers(currentReplicas int32, cluster *yugabytev1alpha1.YBCluster) (bool, error) {
 	// Ignore new/changed replica count if scale down
@@ -40,8 +65,8 @@ func (r *ReconcileYBCluster) scaleTServers(currentReplicas int32, cluster *yugab
 		tserverScaleCond := status.Condition{
 			Type:    scalingDownTServersCondition,
 			Status:  corev1.ConditionTrue,
-			Reason:  status.ConditionReason("ScaleDownInProgress"),
-			Message: "one or more TServer(s) are scaling down",
+			Reason:  scaleDownInProgress,
+			Message: scaleDownInProgressMsg,
 		}
 		logger.Infof("updating Status condition %s: %s", tserverScaleCond.Type, tserverScaleCond.Status)
 		cluster.Status.Conditions.SetCondition(tserverScaleCond)
@@ -139,17 +164,17 @@ func (r *ReconcileYBCluster) syncBlacklist(cluster *yugabytev1alpha1.YBCluster) 
 	masterPod := fmt.Sprintf("%s-%d", masterName, 0)
 	getConfigCmd := runWithShell("bash",
 		[]string{
-			ybAdminCommand,
-			"--master_addresses",
+			ybAdminBinary,
+			ybAdminMasterAddressesFlag,
 			getMasterAddresses(
 				cluster.Namespace,
 				cluster.Spec.Master.MasterRPCPort,
 				cluster.Spec.Master.Replicas,
 			),
-			"get_universe_config",
+			ybAdminGetUniverseConfigCmd,
 		})
 
-	logger.Infof("running command in YB-Master pod: %s, command: %q", masterPod, getConfigCmd)
+	logger.Infof("running command 'yb-admin %s' in YB-Master pod: %s, command: %q", ybAdminGetUniverseConfigCmd, masterPod, getConfigCmd)
 	cout, _, err := kube.Exec(r.config, cluster.Namespace, masterPod, "", getConfigCmd, nil)
 	if err != nil {
 		return err
@@ -174,25 +199,14 @@ func (r *ReconcileYBCluster) syncBlacklist(cluster *yugabytev1alpha1.YBCluster) 
 			cluster.Spec.Tserver.TserverRPCPort,
 		)
 
-		operation := "ADD"
-
-		if pod.Annotations == nil {
-			operation = "REMOVE"
-		}
-		if _, ok := pod.Annotations[blacklistAnnotation]; !ok {
-			operation = "REMOVE"
-		}
-		if pod.Annotations[blacklistAnnotation] == "false" {
-			operation = "REMOVE"
-		}
-
+		operation := getBlacklistOperation(pod)
 		if containsString(currentBl, podHostPort) {
-			if operation == "ADD" {
+			if operation == ybAdminBlacklistAddOp {
 				logger.Infof("pod %s is already in YB-Master blacklist, skipping.", podHostPort)
 				continue
 			}
 		} else {
-			if operation == "REMOVE" {
+			if operation == ybAdminBlacklistRemoveOp {
 				logger.Infof("pod %s is not in YB-Master blacklist, skipping.", podHostPort)
 				continue
 			}
@@ -200,20 +214,20 @@ func (r *ReconcileYBCluster) syncBlacklist(cluster *yugabytev1alpha1.YBCluster) 
 
 		modBlacklistCmd := runWithShell("bash",
 			[]string{
-				ybAdminCommand,
-				"--master_addresses",
+				ybAdminBinary,
+				ybAdminMasterAddressesFlag,
 				getMasterAddresses(
 					cluster.Namespace,
 					cluster.Spec.Master.MasterRPCPort,
 					cluster.Spec.Master.Replicas,
 				),
-				"change_blacklist",
-				operation,
+				ybAdminChangeBlacklistCmd,
+				string(operation),
 				podHostPort,
 			})
 
 		// blacklist it or remove it
-		logger.Infof("running command in YB-Master pod: %s, command: %q", masterPod, modBlacklistCmd)
+		logger.Infof("running command 'yb-admin %s' in YB-Master pod: %s, command: %q", ybAdminChangeBlacklistCmd, masterPod, modBlacklistCmd)
 		_, _, err := kube.Exec(r.config, cluster.Namespace, masterPod, "", modBlacklistCmd, nil)
 		if err != nil {
 			return err
@@ -235,30 +249,47 @@ func (r *ReconcileYBCluster) syncBlacklist(cluster *yugabytev1alpha1.YBCluster) 
 	return nil
 }
 
+// getBlacklistOperation returns the blacklist operation to be
+// performed on given pod. Returns ybAdminBlacklistRemoveOp if the
+// blacklistAnnotation is "false" or if it doesn't exist. Returns
+// ybAdminBlacklistAddOp otherwise.
+func getBlacklistOperation(p corev1.Pod) ybAdminBlacklistOperation {
+	if p.Annotations == nil {
+		return ybAdminBlacklistRemoveOp
+	}
+	if _, ok := p.Annotations[blacklistAnnotation]; !ok {
+		return ybAdminBlacklistRemoveOp
+	}
+	if p.Annotations[blacklistAnnotation] == "false" {
+		return ybAdminBlacklistRemoveOp
+	}
+	return ybAdminBlacklistAddOp
+}
+
 // checkDataMoveProgress queries YB-Master for the progress of data
 // move operation. Sets the value of status condition
 // movingDataCondition accordingly.
 func (r *ReconcileYBCluster) checkDataMoveProgress(cluster *yugabytev1alpha1.YBCluster) error {
 	cmd := runWithShell("bash",
 		[]string{
-			ybAdminCommand,
-			"--master_addresses",
+			ybAdminBinary,
+			ybAdminMasterAddressesFlag,
 			getMasterAddresses(
 				cluster.Namespace,
 				cluster.Spec.Master.MasterRPCPort,
 				cluster.Spec.Master.Replicas,
 			),
-			"get_load_move_completion",
+			ybAdminGetLoadMoveCompletionCmd,
 		},
 	)
 	masterPod := fmt.Sprintf("%s-%d", masterName, 0)
-	logger.Infof("running command in YB-Master pod: %s, command: %q", masterPod, cmd)
+	logger.Infof("running command 'yb-admin %s' in YB-Master pod: %s, command: %q", ybAdminGetLoadMoveCompletionCmd, masterPod, cmd)
 	cout, _, err := kube.Exec(r.config, cluster.Namespace, masterPod, "", cmd, nil)
 	if err != nil {
 		return err
 	}
 
-	// TODO(bhavin192): improve this long line
+	// TODO(bhavin192): improve this log line
 	// logger.Infof("get_load_move_completion: out: %s, err: %s", cout, cerr)
 	p := cout[strings.Index(cout, "= ")+2 : strings.Index(cout, " :")]
 	logger.Infof("current data move progress: %s", p)
@@ -267,12 +298,12 @@ func (r *ReconcileYBCluster) checkDataMoveProgress(cluster *yugabytev1alpha1.YBC
 	cond := status.Condition{Type: movingDataCondition}
 	if p != "100" {
 		cond.Status = corev1.ConditionTrue
-		cond.Reason = status.ConditionReason("DataMoveInProgress")
-		cond.Message = "data move operation is in progress"
+		cond.Reason = dataMoveInProgress
+		cond.Message = dataMoveInProgressMsg
 	} else {
 		cond.Status = corev1.ConditionFalse
-		cond.Reason = status.ConditionReason("NoDataMoveInProgress")
-		cond.Message = "no data move operation is in progress"
+		cond.Reason = noDataMoveInProgress
+		cond.Message = noDataMoveInProgressMsg
 	}
 
 	logger.Infof("updating Status condition %s: %s", cond.Type, cond.Status)

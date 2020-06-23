@@ -75,11 +75,6 @@ const (
 	appLabel                    = "app"
 )
 
-const (
-	movingDataCondition          status.ConditionType = "MovingData"
-	scalingDownTServersCondition status.ConditionType = "ScalingDownTServers"
-)
-
 /**
 * USER ACTION REQUIRED: This is a scaffold file intended for the user to modify with their own Controller
 * business logic.  Delete these comments after modifying this file.*
@@ -569,8 +564,8 @@ func (r *ReconcileYBCluster) reconcileStatefulsets(cluster *yugabytev1alpha1.YBC
 			tserverScaleCond := status.Condition{
 				Type:    scalingDownTServersCondition,
 				Status:  corev1.ConditionFalse,
-				Reason:  status.ConditionReason("NoScaleDownInProgress"),
-				Message: "no TServer(s) are scaling down",
+				Reason:  noScaleDownInProgress,
+				Message: noScaleDownInProgressMsg,
 			}
 			logger.Infof("updating Status condition %s: %s", tserverScaleCond.Type, tserverScaleCond.Status)
 			cluster.Status.Conditions.SetCondition(tserverScaleCond)
