@@ -85,6 +85,7 @@ func (r *ReconcileYBCluster) scaleTServers(currentReplicas int32, cluster *yugab
 // blacklistPods adds yugabyte.com/blacklist: true annotation to the
 // TServer pods
 func (r *ReconcileYBCluster) blacklistPods(cluster *yugabytev1alpha1.YBCluster, cnt int32) error {
+	logger.Infof("adding blacklist annotation to %d TServer pods", cnt)
 	scalingDownTo := cluster.Status.TargetedTServerReplicas
 	tserverReplicas := scalingDownTo + cnt
 	for podNum := tserverReplicas - 1; podNum >= scalingDownTo; podNum-- {
@@ -99,7 +100,7 @@ func (r *ReconcileYBCluster) blacklistPods(cluster *yugabytev1alpha1.YBCluster, 
 
 		if pod.Annotations == nil {
 			pod.SetAnnotations(map[string]string{blacklistAnnotation: "true"})
-		} else if _, ok := pod.Annotations[blacklistAnnotation]; !ok {
+		} else {
 			pod.Annotations[blacklistAnnotation] = "true"
 		}
 
