@@ -4,6 +4,10 @@ metadata:
   name: example-ybcluster
   namespace: yb-operator
 spec:
+  image:
+    repository: docker.io/isanketh/yugabyte
+    tag: 2.1.7.0-b99
+    pullPolicy: IfNotPresent
   replicationFactor: 3
   master:
     replicas: 3

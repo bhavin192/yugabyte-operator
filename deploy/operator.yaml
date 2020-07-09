@@ -110,7 +110,7 @@ spec:
       containers:
         - name: yugabyte-operator
           # Replace this with the built image name
-          image: quay.io/yugabyte/yugabytedb-operator
+          image: bhavin192/yugabyte-operator:23-06-134738
           command:
             - yugabyte-operator
           imagePullPolicy: Always
